@@ -1,0 +1,1024 @@
+<!DOCTYPE html>
+<html lang="zh-Hant-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>餘裕｜先看剩多少，再決定怎麼花</title>
+<meta name="description" content="以帳戶餘額為核心的記帳工具：先分配收入到各帳戶，消費時看的是還剩多少能花。">
+<meta name="theme-color" content="#11533C">
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="icons/icon-192.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#F3F5F1;
+  --surface:#FFFFFF;
+  --ink:#15261D;
+  --ink-2:#5B6B61;
+  --line:#E2E7E0;
+  --primary:#11533C;       /* 鈔票綠 */
+  --primary-soft:#E3EFE8;
+  --gold:#C99A3B;          /* 點睛用，少量 */
+  --danger:#B5402C;
+  --radius:16px;
+  --shadow:0 1px 2px rgba(21,38,29,.06),0 6px 18px rgba(21,38,29,.06);
+  --font-body:"Noto Sans TC",-apple-system,"PingFang TC","Microsoft JhengHei",sans-serif;
+  --font-num:"IBM Plex Mono","Noto Sans TC",monospace;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+[v-cloak]{display:none}
+html{font-size:16px}
+body{
+  font-family:var(--font-body);
+  background:var(--bg);
+  color:var(--ink);
+  line-height:1.55;
+  min-height:100dvh;
+  -webkit-font-smoothing:antialiased;
+}
+button{font-family:inherit;font-size:inherit;cursor:pointer;border:none;background:none;color:inherit}
+input,select{font-family:inherit;font-size:1rem;color:var(--ink)}
+:focus-visible{outline:2px solid var(--primary);outline-offset:2px;border-radius:4px}
+.mono{font-family:var(--font-num);font-variant-numeric:tabular-nums;letter-spacing:-.01em}
+
+/* ───── 版面骨架 ───── */
+.topbar{
+  position:sticky;top:0;z-index:20;
+  background:rgba(243,245,241,.92);backdrop-filter:blur(8px);
+  border-bottom:1px solid var(--line);
+}
+.topbar-in{
+  max-width:960px;margin:0 auto;padding:.8rem 1rem;
+  display:flex;align-items:center;justify-content:space-between;gap:1rem;
+}
+.brand{font-weight:700;font-size:1.15rem;color:var(--primary);display:flex;align-items:baseline;gap:.6rem}
+.brand small{font-weight:400;font-size:.75rem;color:var(--ink-2);letter-spacing:.05em}
+.topnav{display:none;gap:.25rem}
+.topnav button{
+  padding:.4rem .9rem;border-radius:999px;color:var(--ink-2);font-weight:500;
+}
+.topnav button.on{background:var(--primary);color:#fff}
+.container{max-width:960px;margin:0 auto;padding:1rem 1rem 6.5rem}
+
+/* 手機底部導覽 */
+.bottomnav{
+  position:fixed;left:0;right:0;bottom:0;z-index:20;
+  display:grid;grid-template-columns:repeat(5,1fr);
+  background:var(--surface);border-top:1px solid var(--line);
+  padding-bottom:env(safe-area-inset-bottom);
+}
+.bottomnav button{
+  padding:.55rem 0 .5rem;display:flex;flex-direction:column;align-items:center;gap:.1rem;
+  font-size:.7rem;color:var(--ink-2);
+}
+.bottomnav button svg{width:22px;height:22px}
+.bottomnav button.on{color:var(--primary);font-weight:700}
+.fab{
+  position:fixed;right:1.1rem;bottom:4.6rem;z-index:21;
+  width:56px;height:56px;border-radius:50%;
+  background:var(--primary);color:#fff;font-size:1.7rem;line-height:1;
+  box-shadow:0 6px 16px rgba(17,83,60,.35);
+  display:flex;align-items:center;justify-content:center;
+  transition:transform .15s ease;
+}
+.fab:active{transform:scale(.94)}
+
+/* ───── 總覽 ───── */
+.hero{
+  background:linear-gradient(135deg,#11533C 0%,#1A6B4E 70%,#1F7A58 100%);
+  color:#fff;border-radius:var(--radius);padding:1.4rem 1.3rem 1.2rem;
+  box-shadow:var(--shadow);position:relative;overflow:hidden;
+}
+.hero::after{ /* 安全線：簽名元素，呼應鈔票 */
+  content:"";position:absolute;top:0;bottom:0;right:18%;width:2px;
+  background:repeating-linear-gradient(to bottom,rgba(255,255,255,.35) 0 6px,transparent 6px 12px);
+}
+.hero-label{font-size:.8rem;opacity:.85;letter-spacing:.12em}
+.hero-amount{font-size:2.1rem;font-weight:600;margin:.15rem 0 .3rem}
+.hero-sub{font-size:.8rem;opacity:.85}
+.hero-sub b{color:#FFE3A3;font-weight:600}
+
+.sec-title{
+  margin:1.4rem 0 .6rem;font-size:.8rem;font-weight:700;color:var(--ink-2);
+  letter-spacing:.15em;display:flex;align-items:center;justify-content:space-between;
+}
+.sec-title .lnk{color:var(--primary);font-weight:500;letter-spacing:0;font-size:.8rem}
+
+.acc-grid{display:grid;gap:.8rem;grid-template-columns:1fr}
+.acc-card{
+  --acc:#11533C;
+  background:var(--surface);border-radius:var(--radius);box-shadow:var(--shadow);
+  padding:1rem 1.1rem 1rem 1.3rem;position:relative;overflow:hidden;
+  border:1px solid var(--line);cursor:pointer;
+  transition:transform .12s ease;
+  text-align:left;width:100%;
+}
+.acc-card:active{transform:scale(.985)}
+.acc-card::before{ /* 帳戶色書脊 */
+  content:"";position:absolute;left:0;top:0;bottom:0;width:6px;background:var(--acc);
+}
+.acc-head{display:flex;align-items:center;justify-content:space-between;gap:.5rem}
+.acc-name{font-weight:700}
+.acc-hint{font-size:.7rem;color:var(--ink-2);border:1px solid var(--line);border-radius:999px;padding:.1rem .55rem}
+.acc-balance{font-size:1.6rem;font-weight:600;margin:.25rem 0 .35rem;color:var(--ink)}
+.acc-balance.neg{color:var(--danger)}
+.acc-balance small{font-size:.8rem;color:var(--ink-2);font-weight:500;margin-right:.2rem}
+.acc-bar{height:6px;border-radius:99px;background:var(--primary-soft);overflow:hidden;margin-bottom:.4rem}
+.acc-bar i{display:block;height:100%;background:var(--acc);border-radius:99px;transition:width .4s ease}
+.acc-meta{font-size:.74rem;color:var(--ink-2);display:flex;justify-content:space-between}
+
+.quick{display:grid;grid-template-columns:1fr 1fr;gap:.8rem;margin-top:1rem}
+.quick button{
+  background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);
+  padding:.8rem;font-weight:700;color:var(--primary);box-shadow:var(--shadow);
+}
+
+/* ───── 通用卡片 / 列表 ───── */
+.card{
+  background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);
+  box-shadow:var(--shadow);padding:1.1rem;
+}
+.txn{display:flex;align-items:center;gap:.75rem;padding:.65rem 0;border-bottom:1px dashed var(--line)}
+.txn:last-child{border-bottom:none}
+.txn-dot{width:34px;height:34px;border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:1rem;background:var(--primary-soft);flex:none}
+.txn-main{flex:1;min-width:0}
+.txn-title{font-weight:500;font-size:.92rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.txn-sub{font-size:.72rem;color:var(--ink-2)}
+.txn-amt{font-weight:600;font-size:.95rem}
+.txn-amt.out{color:var(--ink)}
+.txn-amt.in{color:var(--primary)}
+.txn-del{color:var(--ink-2);font-size:.8rem;padding:.3rem}
+.date-head{font-size:.75rem;font-weight:700;color:var(--ink-2);margin:1rem 0 .2rem;letter-spacing:.08em}
+
+.chips{display:flex;gap:.45rem;flex-wrap:wrap}
+.chip{
+  border:1px solid var(--line);background:var(--surface);border-radius:999px;
+  padding:.35rem .8rem;font-size:.85rem;color:var(--ink-2);
+}
+.chip.on{background:var(--primary);border-color:var(--primary);color:#fff;font-weight:500}
+.chip b{font-family:var(--font-num);font-weight:600}
+
+/* ───── 表單 ───── */
+.field{margin-bottom:1rem}
+.field label{display:block;font-size:.78rem;font-weight:700;color:var(--ink-2);margin-bottom:.35rem;letter-spacing:.06em}
+.input{
+  width:100%;padding:.7rem .85rem;border:1px solid var(--line);border-radius:12px;
+  background:var(--surface);
+}
+.input:focus{border-color:var(--primary);outline:none;box-shadow:0 0 0 3px var(--primary-soft)}
+.input.amt{font-family:var(--font-num);font-size:1.25rem;font-weight:600;text-align:right}
+.btn{
+  display:block;width:100%;padding:.85rem;border-radius:12px;font-weight:700;
+  background:var(--primary);color:#fff;transition:opacity .15s;
+}
+.btn:disabled{opacity:.4;cursor:not-allowed}
+.btn.ghost{background:var(--surface);color:var(--danger);border:1px solid var(--line)}
+.row2{display:grid;grid-template-columns:1fr 1fr;gap:.8rem}
+.hint{font-size:.78rem;color:var(--ink-2)}
+.hint.warn{color:var(--danger);font-weight:500}
+.hint.ok{color:var(--primary);font-weight:500}
+
+/* 分配收入：分配列 */
+.alloc-row{display:flex;align-items:center;gap:.7rem;padding:.55rem 0;border-bottom:1px dashed var(--line)}
+.alloc-row:last-child{border-bottom:none}
+.alloc-dot{width:10px;height:10px;border-radius:50%;flex:none}
+.alloc-name{flex:1;font-weight:500}
+.alloc-row .input{width:8.2rem}
+.alloc-sum{
+  margin-top: .9rem;padding:.8rem .9rem;border-radius:12px;background:var(--primary-soft);
+  display:flex;justify-content:space-between;align-items:center;font-size:.88rem;
+}
+
+/* ───── 彈窗 ───── */
+.overlay{
+  position:fixed;inset:0;background:rgba(21,38,29,.45);z-index:40;
+  display:flex;align-items:flex-end;justify-content:center;
+}
+.sheet{
+  background:var(--bg);width:100%;max-width:520px;
+  border-radius:20px 20px 0 0;padding:1.2rem 1.2rem calc(1.2rem + env(safe-area-inset-bottom));
+  max-height:88dvh;overflow-y:auto;
+  animation:up .22s ease;
+}
+@keyframes up{from{transform:translateY(40px);opacity:.5}to{transform:none;opacity:1}}
+.sheet-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:1rem}
+.sheet-head h2{font-size:1.05rem}
+.sheet-head button{color:var(--ink-2);font-size:1.3rem;line-height:1;padding:.2rem .4rem}
+
+/* 色票選擇 */
+.swatches{display:flex;gap:.6rem;flex-wrap:wrap}
+.swatch{width:34px;height:34px;border-radius:50%;border:3px solid transparent}
+.swatch.on{border-color:var(--ink)}
+
+.rep-row{display:flex;align-items:center;gap:.6rem;width:100%;padding:.55rem 0;border-bottom:1px dashed var(--line);text-align:left}
+.rep-m{font-size:.78rem;color:var(--ink-2);width:4.6rem;flex:none;font-family:var(--font-num)}
+.rep-track{flex:1;height:10px;background:var(--primary-soft);border-radius:99px;overflow:hidden}
+.rep-track i{display:block;height:100%;border-radius:99px;transition:width .4s ease}
+.rep-track i.pos{background:var(--primary)}
+.rep-track i.neg{background:var(--danger)}
+.rep-net{width:6.8rem;flex:none;text-align:right;font-size:.86rem;font-weight:600}
+.rep-net.ok{color:var(--primary)}
+.rep-net.bad{color:var(--danger)}
+.rep-detail{padding:.6rem .2rem .9rem;border-bottom:1px dashed var(--line);background:linear-gradient(to bottom,rgba(17,83,60,.03),transparent)}
+.rep-line{display:flex;justify-content:space-between;align-items:center;padding:.22rem 0;font-size:.86rem;color:var(--ink-2)}
+.rep-line b{color:var(--ink);font-weight:600}
+
+.empty{
+  text-align:center;padding:2.5rem 1rem;color:var(--ink-2);
+}
+.empty .btn{max-width:240px;margin:1rem auto 0}
+
+/* ───── 桌面版 ───── */
+@media (min-width:768px){
+  .topnav{display:flex}
+  .bottomnav{display:none}
+  .container{padding-bottom:2rem}
+  .fab{bottom:2rem;right:calc(50% - 480px + 1rem)}
+  @media (max-width:1000px){ .fab{right:1.5rem} }
+  .acc-grid{grid-template-columns:repeat(2,1fr)}
+  .hero-amount{font-size:2.6rem}
+  .overlay{align-items:center}
+  .sheet{border-radius:20px;animation:none}
+}
+@media (min-width:1024px){
+  .acc-grid{grid-template-columns:repeat(3,1fr)}
+}
+@media (prefers-reduced-motion:reduce){
+  *{animation:none!important;transition:none!important}
+}
+</style>
+</head>
+<body>
+<div id="app" v-cloak>
+
+  <!-- ════════ 登入 / 註冊 ════════ -->
+  <div v-if="!token && !guest" style="min-height:100dvh;display:flex;align-items:center;justify-content:center;padding:1rem">
+    <div class="card" style="width:100%;max-width:380px">
+      <div class="brand" style="justify-content:center;font-size:1.5rem;margin-bottom:.2rem;display:flex">餘裕</div>
+      <p class="hint" style="text-align:center;margin-bottom:1.3rem">先看剩多少，再決定怎麼花</p>
+      <div class="field">
+        <label>Email</label>
+        <input class="input" type="email" v-model.trim="auth.email" placeholder="you@example.com" autocomplete="username">
+      </div>
+      <div class="field">
+        <label>密碼{{ authMode==='register' ? '（至少 8 碼）' : '' }}</label>
+        <input class="input" type="password" v-model="auth.password" autocomplete="current-password" @keyup.enter="submitAuth">
+      </div>
+      <p class="hint warn" v-if="auth.error">{{ auth.error }}</p>
+      <br>
+      <button class="btn" :disabled="auth.busy || !auth.email || !auth.password" @click="submitAuth">
+        {{ auth.busy ? '處理中…' : (authMode==='login' ? '登入' : '建立帳號') }}
+      </button>
+      <p class="hint" style="text-align:center;margin-top:1rem">
+        <button style="color:var(--primary);font-weight:500" @click="authMode = authMode==='login' ? 'register' : 'login'; auth.error=''">
+          {{ authMode==='login' ? '還沒有帳號？註冊' : '已經有帳號？登入' }}
+        </button>
+        　
+        <button style="color:var(--ink-2)" @click="useGuest">先離線試用</button>
+      </p>
+    </div>
+  </div>
+
+  <template v-if="token || guest">
+  <header class="topbar">
+    <div class="topbar-in">
+      <div class="brand">餘裕 <small>先看剩多少，再決定怎麼花</small></div>
+      <nav class="topnav" aria-label="主選單">
+        <button :class="{on:tab==='home'}" @click="tab='home'">總覽</button>
+        <button :class="{on:tab==='allocate'}" @click="tab='allocate'">分配收入</button>
+        <button :class="{on:tab==='history'}" @click="tab='history'">紀錄</button>
+        <button :class="{on:tab==='report'}" @click="tab='report'">報表</button>
+        <button :class="{on:tab==='accounts'}" @click="tab='accounts'">帳戶</button>
+      </nav>
+    </div>
+  </header>
+
+  <main class="container">
+
+    <!-- ════════ 總覽 ════════ -->
+    <section v-if="tab==='home'">
+      <div class="hero">
+        <div class="hero-label">所有帳戶合計・現在還能花</div>
+        <div class="hero-amount mono">{{ fmt(totalBalance) }}</div>
+        <div class="hero-sub">{{ monthLabel }}已分配 <b>{{ fmt(monthIn) }}</b>・已支出 <b>{{ fmt(monthOut) }}</b></div>
+      </div>
+
+      <template v-if="accounts.length">
+        <div class="card" v-if="!monthAllocated" style="margin-top:1rem;border-left:4px solid var(--gold);display:flex;align-items:center;justify-content:space-between;gap:.8rem;flex-wrap:wrap">
+          <span style="font-weight:500">📌 {{ monthLabel }}還沒分配收入</span>
+          <button class="btn" style="width:auto;padding:.55rem 1.1rem" @click="goAllocate">{{ hasTemplate ? '用上月範本分配' : '去分配' }}</button>
+        </div>
+        <div class="sec-title"><span>帳戶餘額</span><button class="lnk" @click="tab='accounts'">管理帳戶</button></div>
+        <div class="acc-grid">
+          <button class="acc-card" v-for="a in accountsView" :key="a.id"
+                  :style="{'--acc':a.color}" @click="openExpense(a.id)">
+            <div class="acc-head">
+              <span class="acc-name">{{ a.name }}</span>
+              <span class="acc-hint">點一下記支出</span>
+            </div>
+            <div class="acc-balance mono" :class="{neg:a.balance<0}"><small>NT$</small>{{ num(a.balance) }}</div>
+            <div class="acc-bar" v-if="a.monthIn>0" :title="'本月已用 '+a.pct+'%'">
+              <i :style="{width:Math.min(a.pct,100)+'%'}"></i>
+            </div>
+            <div class="acc-meta">
+              <span>本月支出 {{ fmt(a.monthOut) }}</span>
+              <span v-if="a.monthIn>0">本月分配 {{ fmt(a.monthIn) }}</span>
+            </div>
+          </button>
+        </div>
+
+        <div class="quick">
+          <button @click="tab='allocate'">↓ 分配收入</button>
+          <button @click="openTransfer()">⇄ 帳戶互轉</button>
+        </div>
+
+        <template v-if="recentTxns.length">
+          <div class="sec-title"><span>最近紀錄</span><button class="lnk" @click="tab='history'">查看全部</button></div>
+          <div class="card">
+            <div class="txn" v-for="t in recentTxns" :key="t.id">
+              <div class="txn-dot">{{ txnIcon(t) }}</div>
+              <div class="txn-main">
+                <div class="txn-title">{{ txnTitle(t) }}</div>
+                <div class="txn-sub">{{ t.date }}・{{ accName(t.accountId) }}<template v-if="t.toAccountId"> → {{ accName(t.toAccountId) }}</template></div>
+              </div>
+              <div class="txn-amt mono" :class="t.type==='in'?'in':'out'">{{ t.type==='in'?'+':(t.type==='out'?'−':'') }}{{ fmt(t.amount) }}</div>
+            </div>
+          </div>
+        </template>
+      </template>
+
+      <div class="empty" v-else>
+        <p>還沒有帳戶。先建立你的帳戶（例如：儲蓄、彈性、日常花費），<br>之後把收入分配進去，消費時就知道還剩多少能花。</p>
+        <button class="btn" @click="tab='accounts'; openAccEdit()">建立第一個帳戶</button>
+      </div>
+    </section>
+
+    <!-- ════════ 分配收入 ════════ -->
+    <section v-if="tab==='allocate'">
+      <div class="sec-title"><span>分配收入</span></div>
+      <div class="card">
+        <button class="chip" v-if="hasTemplate" style="margin-bottom:1rem" @click="applyTemplate">↻ 套用上次的分配範本</button>
+        <div class="field">
+          <label>收入名稱</label>
+          <input class="input" v-model.trim="alloc.note" placeholder="例如：6 月薪資">
+        </div>
+        <div class="row2">
+          <div class="field">
+            <label>收入總額</label>
+            <input class="input amt" type="number" inputmode="numeric" min="0" v-model.number="alloc.total" placeholder="75000">
+          </div>
+          <div class="field">
+            <label>日期</label>
+            <input class="input" type="date" v-model="alloc.date">
+          </div>
+        </div>
+
+        <div class="field">
+          <label>分配到各帳戶</label>
+          <div class="alloc-row" v-for="a in accounts" :key="a.id">
+            <span class="alloc-dot" :style="{background:a.color}"></span>
+            <span class="alloc-name">{{ a.name }}</span>
+            <input class="input amt" type="number" inputmode="numeric" min="0" v-model.number="alloc.map[a.id]" placeholder="0">
+          </div>
+        </div>
+
+        <div class="alloc-sum">
+          <span>已分配 <b class="mono">{{ fmt(allocSum) }}</b></span>
+          <span class="hint" :class="allocLeft===0?'ok':(allocLeft<0?'warn':'')">
+            <template v-if="allocLeft>0">尚未分配 {{ fmt(allocLeft) }}</template>
+            <template v-else-if="allocLeft<0">超出總額 {{ fmt(-allocLeft) }}</template>
+            <template v-else>剛好分完 ✓</template>
+          </span>
+        </div>
+        <label class="hint" style="display:flex;align-items:center;gap:.45rem;margin-top:.9rem;cursor:pointer">
+          <input type="checkbox" v-model="saveTemplate"> 存成每月範本（下個月可一鍵套用同樣的分配）
+        </label>
+        <br>
+        <button class="btn" :disabled="allocSum<=0 || allocLeft<0" @click="confirmAlloc">確認分配</button>
+        <p class="hint" style="margin-top:.6rem" v-if="allocLeft>0">未分配的 {{ fmt(allocLeft) }} 不會記入任何帳戶（例如留在薪轉戶）。</p>
+      </div>
+    </section>
+
+    <!-- ════════ 報表 ════════ -->
+    <section v-if="tab==='report'">
+      <div class="sec-title"><span>每月儲蓄報表</span></div>
+      <template v-if="report.length">
+        <div class="card">
+          <p class="hint">淨存 ＝ 當月分配收入 − 當月支出。{{ report.length }} 個月中有 <b style="color:var(--primary)">{{ savedMonths }}</b> 個月有存到錢。點任一個月可展開當月底各帳戶餘額。</p>
+          <br>
+          <div v-for="r in report" :key="r.month">
+            <button class="rep-row" @click="toggleMonth(r.month)">
+              <span class="rep-m">{{ r.month }}</span>
+              <span class="rep-track"><i :class="r.net>=0?'pos':'neg'" :style="{width: barW(r.net)+'%'}"></i></span>
+              <span class="rep-net mono" :class="r.net>=0?'ok':'bad'">{{ (r.net>=0?'+':'−') + num(Math.abs(r.net)) }}</span>
+            </button>
+            <div class="rep-detail" v-if="selMonth===r.month">
+              <div class="rep-line"><span>{{ monthLabelOf(r.month) }}・分配收入</span><b class="mono">{{ fmt(r.tin) }}</b></div>
+              <div class="rep-line"><span>支出</span><b class="mono">{{ fmt(r.tout) }}</b></div>
+              <div class="rep-line"><span>月底總餘額</span><b class="mono">{{ fmt(r.total) }}</b></div>
+              <div class="rep-line" v-for="a in r.perAcc" :key="a.name">
+                <span><i class="alloc-dot" style="display:inline-block;margin-right:.4rem" :style="{background:a.color}"></i>{{ a.name }}・月底餘額</span>
+                <b class="mono">{{ fmt(a.balance) }}</b>
+              </div>
+            </div>
+          </div>
+        </div>
+      </template>
+      <div class="empty" v-else><p>還沒有任何紀錄，先分配收入或記幾筆支出，這裡就會長出報表。</p></div>
+    </section>
+
+    <!-- ════════ 紀錄 ════════ -->
+    <section v-if="tab==='history'">
+      <div class="sec-title"><span>所有紀錄</span></div>
+      <div class="chips" style="margin-bottom:1rem">
+        <button class="chip" :class="{on:filterAcc==='all'}" @click="filterAcc='all'">全部</button>
+        <button class="chip" v-for="a in accounts" :key="a.id" :class="{on:filterAcc===a.id}" @click="filterAcc=a.id">{{ a.name }}</button>
+      </div>
+      <template v-if="groupedTxns.length">
+        <div v-for="g in groupedTxns" :key="g.date">
+          <div class="date-head">{{ g.date }}</div>
+          <div class="card" style="padding:.4rem 1rem">
+            <div class="txn" v-for="t in g.items" :key="t.id">
+              <div class="txn-dot">{{ txnIcon(t) }}</div>
+              <div class="txn-main">
+                <div class="txn-title">{{ txnTitle(t) }}</div>
+                <div class="txn-sub">{{ accName(t.accountId) }}<template v-if="t.toAccountId"> → {{ accName(t.toAccountId) }}</template></div>
+              </div>
+              <div class="txn-amt mono" :class="t.type==='in'?'in':'out'">{{ t.type==='in'?'+':(t.type==='out'?'−':'') }}{{ fmt(t.amount) }}</div>
+              <button class="txn-del" @click="delTxn(t)" aria-label="刪除這筆紀錄">✕</button>
+            </div>
+          </div>
+        </div>
+      </template>
+      <div class="empty" v-else><p>目前沒有紀錄。</p></div>
+    </section>
+
+    <!-- ════════ 帳戶管理 ════════ -->
+    <section v-if="tab==='accounts'">
+      <div class="sec-title"><span>帳戶管理</span><button class="lnk" @click="openAccEdit()">＋ 新增帳戶</button></div>
+      <div class="acc-grid">
+        <button class="acc-card" v-for="a in accountsView" :key="a.id" :style="{'--acc':a.color}" @click="openAccEdit(a)">
+          <div class="acc-head">
+            <span class="acc-name">{{ a.name }}</span>
+            <span class="acc-hint">編輯</span>
+          </div>
+          <div class="acc-balance mono" :class="{neg:a.balance<0}"><small>NT$</small>{{ num(a.balance) }}</div>
+          <div class="acc-meta"><span>累計分配 {{ fmt(a.totalIn) }}</span><span>累計支出 {{ fmt(a.totalOut) }}</span></div>
+        </button>
+      </div>
+      <p class="hint" style="margin-top:1rem">提示：帳戶餘額由「分配收入 − 支出 ± 轉帳」自動計算，刪除某筆紀錄會自動回沖餘額。</p>
+
+      <div class="sec-title" style="margin-top:1.6rem"><span>資料備份（Excel）</span></div>
+      <div class="card">
+        <p class="hint">日常紀錄即時存在這台裝置的瀏覽器裡。建議定期「匯出 Excel」保存成檔案資料庫；換裝置、清過瀏覽器資料、或在 Excel 裡批次編輯後，再「匯入 Excel」還原。匯入會以檔案內容取代目前資料。</p>
+        <br>
+        <div class="row2">
+          <button class="btn" @click="exportXlsx">⬇ 匯出 Excel</button>
+          <button class="btn" style="background:var(--surface);color:var(--primary);border:1px solid var(--line)" @click="$refs.importInput.click()">⬆ 匯入 Excel</button>
+        </div>
+        <input type="file" accept=".xlsx" ref="importInput" style="display:none" @change="importXlsx">
+      </div>
+
+      <div class="sec-title" style="margin-top:1.6rem"><span>帳號</span></div>
+      <div class="card" v-if="token">
+        <p class="hint">
+          已登入：<b>{{ userEmail }}</b>
+          <template v-if="syncState==='saving'">・雲端儲存中…</template>
+          <template v-else-if="syncState==='offline'"><span class="warn">・目前離線，資料先存在這台裝置，恢復連線後會自動同步</span></template>
+          <template v-else>・已同步到雲端</template>
+        </p>
+        <br>
+        <button class="btn ghost" @click="logoutConfirm">登出</button>
+      </div>
+      <div class="card" v-else>
+        <p class="hint">目前是離線試用模式，資料只存在這台裝置的瀏覽器裡。登入後資料會存到伺服器，換裝置也能用。</p>
+        <br>
+        <button class="btn" @click="guest=false">前往登入／註冊</button>
+      </div>
+    </section>
+  </main>
+
+  <!-- 手機底部導覽 + FAB -->
+  <button class="fab" v-if="accounts.length" @click="openExpense()" aria-label="記一筆支出">＋</button>
+  <nav class="bottomnav" aria-label="主選單">
+    <button :class="{on:tab==='home'}" @click="tab='home'"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 11l9-8 9 8v9a1 1 0 01-1 1h-5v-6h-6v6H4a1 1 0 01-1-1z"/></svg>總覽</button>
+    <button :class="{on:tab==='allocate'}" @click="tab='allocate'"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v14m0 0l-5-5m5 5l5-5M4 21h16"/></svg>分配</button>
+    <button :class="{on:tab==='history'}" @click="tab='history'"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/></svg>紀錄</button>
+    <button :class="{on:tab==='report'}" @click="tab='report'"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 20V10M10 20V4M16 20v-8M21 20H3"/></svg>報表</button>
+    <button :class="{on:tab==='accounts'}" @click="tab='accounts'"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="6" width="18" height="13" rx="2"/><path d="M3 10h18M7 15h4"/></svg>帳戶</button>
+  </nav>
+  </template>
+
+  <!-- ════════ 記支出 ════════ -->
+  <div class="overlay" v-if="expOpen" @click.self="expOpen=false">
+    <div class="sheet" role="dialog" aria-label="記一筆支出">
+      <div class="sheet-head"><h2>記一筆支出</h2><button @click="expOpen=false" aria-label="關閉">✕</button></div>
+
+      <div class="field">
+        <label>從哪個帳戶扣？（括號內是剩餘可花）</label>
+        <div class="chips">
+          <button class="chip" v-for="a in accountsView" :key="a.id"
+                  :class="{on:exp.accountId===a.id}" @click="exp.accountId=a.id">
+            {{ a.name }}（<b>{{ num(a.balance) }}</b>）
+          </button>
+        </div>
+      </div>
+
+      <div class="row2">
+        <div class="field">
+          <label>金額</label>
+          <input class="input amt" type="number" inputmode="numeric" min="0" v-model.number="exp.amount" placeholder="0" ref="expAmtInput">
+        </div>
+        <div class="field">
+          <label>日期</label>
+          <input class="input" type="date" v-model="exp.date">
+        </div>
+      </div>
+
+      <div class="field">
+        <label>分類</label>
+        <div class="chips">
+          <button class="chip" v-for="c in CATEGORIES" :key="c.name"
+                  :class="{on:exp.category===c.name}" @click="selectCat(c.name)">{{ c.icon }} {{ c.name }}</button>
+        </div>
+      </div>
+
+      <div class="field" v-if="currentSubs.length">
+        <label>子分類（選填）</label>
+        <div class="chips">
+          <button class="chip" :class="{on:exp.sub===''}" @click="exp.sub=''">不細分</button>
+          <button class="chip" v-for="s in currentSubs" :key="s"
+                  :class="{on:exp.sub===s}" @click="exp.sub=s">{{ s }}</button>
+        </div>
+      </div>
+
+      <div class="field">
+        <label>備註（選填）</label>
+        <input class="input" v-model.trim="exp.note" placeholder="例如：晚餐、加油">
+      </div>
+
+      <p class="hint warn" v-if="expOver">⚠ 這筆會讓「{{ accName(exp.accountId) }}」變成負的（{{ fmt(expAfter) }}），確定要花嗎？</p>
+      <p class="hint ok" v-else-if="exp.accountId && exp.amount>0">記完後「{{ accName(exp.accountId) }}」還剩 {{ fmt(expAfter) }}</p>
+      <br>
+      <button class="btn" :disabled="!exp.accountId || !(exp.amount>0)" @click="confirmExpense">確認支出</button>
+    </div>
+  </div>
+
+  <!-- ════════ 帳戶互轉 ════════ -->
+  <div class="overlay" v-if="trOpen" @click.self="trOpen=false">
+    <div class="sheet" role="dialog" aria-label="帳戶互轉">
+      <div class="sheet-head"><h2>帳戶互轉</h2><button @click="trOpen=false" aria-label="關閉">✕</button></div>
+      <div class="row2">
+        <div class="field">
+          <label>從</label>
+          <select class="input" v-model="tr.from">
+            <option v-for="a in accountsView" :key="a.id" :value="a.id">{{ a.name }}（{{ num(a.balance) }}）</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>到</label>
+          <select class="input" v-model="tr.to">
+            <option v-for="a in accounts" :key="a.id" :value="a.id">{{ a.name }}</option>
+          </select>
+        </div>
+      </div>
+      <div class="field">
+        <label>金額</label>
+        <input class="input amt" type="number" inputmode="numeric" min="0" v-model.number="tr.amount" placeholder="0">
+      </div>
+      <p class="hint warn" v-if="tr.from===tr.to">「從」跟「到」要選不同帳戶。</p>
+      <button class="btn" :disabled="!(tr.amount>0) || tr.from===tr.to" @click="confirmTransfer">確認轉帳</button>
+    </div>
+  </div>
+
+  <!-- ════════ 新增 / 編輯帳戶 ════════ -->
+  <div class="overlay" v-if="accOpen" @click.self="accOpen=false">
+    <div class="sheet" role="dialog" aria-label="帳戶設定">
+      <div class="sheet-head"><h2>{{ accForm.id ? '編輯帳戶' : '新增帳戶' }}</h2><button @click="accOpen=false" aria-label="關閉">✕</button></div>
+      <div class="field">
+        <label>帳戶名稱</label>
+        <input class="input" v-model.trim="accForm.name" placeholder="例如：日常花費">
+      </div>
+      <div class="field">
+        <label>代表色</label>
+        <div class="swatches">
+          <button class="swatch" v-for="c in PALETTE" :key="c" :style="{background:c}"
+                  :class="{on:accForm.color===c}" @click="accForm.color=c" :aria-label="'選擇顏色 '+c"></button>
+        </div>
+      </div>
+      <button class="btn" :disabled="!accForm.name" @click="saveAccount">儲存</button>
+      <br>
+      <button class="btn ghost" v-if="accForm.id" @click="deleteAccount">刪除帳戶（連同其所有紀錄）</button>
+    </div>
+  </div>
+
+</div>
+
+<script src="https://unpkg.com/vue@3.4.38/dist/vue.global.prod.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script>
+const { createApp, ref, reactive, computed, watch, nextTick } = Vue;
+
+/* ── 儲存層：localStorage 失敗時退回記憶體（例如預覽環境） ── */
+const KEY = 'yuyu-data-v1';
+let mem = null;
+function load(){ try{ const r = localStorage.getItem(KEY); return r ? JSON.parse(r) : null; }catch(e){ return mem; } }
+function save(d){ try{ localStorage.setItem(KEY, JSON.stringify(d)); }catch(e){ mem = d; } }
+
+const PALETTE = ['#11533C','#1F5FA8','#C99A3B','#7A4A8C','#B5402C','#0E7C7B','#5B6B61'];
+const CATEGORIES = [
+  {name:'飲食', icon:'🍜', subs:['早餐','午餐','晚餐','飲料','點心宵夜','食材','聚餐']},
+  {name:'購物', icon:'🛍️', subs:['日用品','衣著','3C','美妝保養','家居','禮物']},
+  {name:'交通', icon:'🚆', subs:['捷運公車','加油','停車過路費','計程車','火車高鐵','機車汽車保養']},
+  {name:'娛樂', icon:'🎮', subs:['電影','遊戲','訂閱服務','旅遊','休閒嗜好']},
+  {name:'帳單', icon:'🧾', subs:['房租房貸','水電瓦斯','電話網路','保險','稅金','信用卡費']},
+  {name:'醫療', icon:'💊', subs:['門診','牙醫','藥品','保健食品']},
+  {name:'學習', icon:'📚', subs:['書籍','課程','學費','文具']},
+  {name:'人情', icon:'🎁', subs:['請客','紅包禮金','孝親','捐款']},
+  {name:'其他', icon:'📌', subs:[]},
+];
+const today = () => new Date().toISOString().slice(0,10);
+const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2,7);
+
+createApp({
+  setup(){
+    /* ── 狀態 ── */
+    const saved = load();
+    const accounts = ref(saved?.accounts ?? [
+      { id:'a1', name:'儲蓄', color:'#11533C' },
+      { id:'a2', name:'彈性運用', color:'#1F5FA8' },
+      { id:'a3', name:'日常花費', color:'#C99A3B' },
+    ]);
+    const txns = ref(saved?.txns ?? []);   // {id,type:'in'|'out'|'tr',accountId,toAccountId?,amount,category?,sub?,note,date,ts}
+    const settings = ref(saved?.settings ?? { allocTemplate: null }); // 跨裝置同步的使用者設定
+    const tab = ref('home');
+    const filterAcc = ref('all');
+
+    /* ── 登入與同步 ──
+       資料庫在後端（SQLite，依使用者隔離）；localStorage 是離線快取。
+       每次變更：先存本機，再防抖 0.8 秒把整份快照 PUT 回伺服器。 */
+    const lsGet = k => { try{ return localStorage.getItem(k); }catch(e){ return null; } };
+    const lsSet = (k,v) => { try{ v===null ? localStorage.removeItem(k) : localStorage.setItem(k,v); }catch(e){} };
+    const token = ref(lsGet('yuyu-token') || '');
+    const userEmail = ref(lsGet('yuyu-email') || '');
+    const guest = ref(lsGet('yuyu-guest') === '1');
+    const authMode = ref('login');
+    const auth = reactive({ email:'', password:'', busy:false, error:'' });
+    const syncState = ref('idle'); // idle | saving | offline
+    let pulling = false, pushTimer = null;
+
+    async function submitAuth(){
+      auth.error = ''; auth.busy = true;
+      try{
+        const res = await fetch(`/api/auth/${authMode.value === 'login' ? 'login' : 'register'}`, {
+          method:'POST', headers:{ 'Content-Type':'application/json' },
+          body: JSON.stringify({ email: auth.email, password: auth.password }),
+        });
+        const d = await res.json().catch(() => ({}));
+        if(!res.ok) throw new Error(d.message || '發生錯誤，請再試一次');
+        token.value = d.token; userEmail.value = d.email;
+        lsSet('yuyu-token', d.token); lsSet('yuyu-email', d.email);
+        guest.value = false; lsSet('yuyu-guest', null);
+        auth.password = '';
+        await pullData();
+      }catch(err){
+        auth.error = (err instanceof TypeError) ? '連不上伺服器，請確認網路或稍後再試' : err.message;
+      }finally{ auth.busy = false; }
+    }
+    async function pullData(){
+      if(!token.value) return;
+      try{
+        const res = await fetch('/api/data', { headers:{ Authorization:'Bearer ' + token.value } });
+        if(res.status === 401){ doLogout(); return; }
+        if(!res.ok) return;
+        const d = await res.json();
+        pulling = true;
+        accounts.value = d.accounts; txns.value = d.txns;
+        if(d.settings) settings.value = d.settings;
+        nextTick(() => { pulling = false; });
+      }catch(e){ /* 離線時用本機快取繼續 */ }
+    }
+    function schedulePush(){
+      if(!token.value) return;
+      syncState.value = 'saving';
+      clearTimeout(pushTimer);
+      pushTimer = setTimeout(async () => {
+        try{
+          const res = await fetch('/api/data', {
+            method:'PUT',
+            headers:{ 'Content-Type':'application/json', Authorization:'Bearer ' + token.value },
+            body: JSON.stringify({ accounts: accounts.value, txns: txns.value, settings: settings.value }),
+          });
+          if(res.status === 401){ doLogout(); return; }
+          syncState.value = res.ok ? 'idle' : 'offline';
+        }catch(e){ syncState.value = 'offline'; }
+      }, 800);
+    }
+    window.addEventListener('online', () => { if(syncState.value === 'offline') schedulePush(); });
+    function doLogout(){
+      clearTimeout(pushTimer);
+      token.value = ''; userEmail.value = '';
+      lsSet('yuyu-token', null); lsSet('yuyu-email', null); lsSet(KEY, null);
+      accounts.value = []; txns.value = [];
+      guest.value = false; lsSet('yuyu-guest', null);
+      tab.value = 'home';
+    }
+    function logoutConfirm(){
+      if(confirm('登出？這台裝置上的快取會清除（伺服器上的資料不受影響）。')) doLogout();
+    }
+    function useGuest(){
+      guest.value = true; lsSet('yuyu-guest', '1');
+      if(!accounts.value.length){
+        accounts.value = [
+          { id:'a1', name:'儲蓄', color:'#11533C' },
+          { id:'a2', name:'彈性運用', color:'#1F5FA8' },
+          { id:'a3', name:'日常花費', color:'#C99A3B' },
+        ];
+      }
+    }
+    if(token.value) pullData();
+
+    watch([accounts, txns, settings], () => {
+      save({ accounts: accounts.value, txns: txns.value, settings: settings.value });
+      if(!pulling) schedulePush();
+    }, { deep:true });
+
+    /* ── 工具 ── */
+    const num = n => (n ?? 0).toLocaleString('zh-TW');
+    const fmt = n => 'NT$ ' + num(n);
+    const accName = id => accounts.value.find(a => a.id === id)?.name ?? '（已刪除）';
+    const catIcon = name => CATEGORIES.find(c => c.name === name)?.icon ?? '📌';
+    const thisMonth = () => today().slice(0,7);
+
+    /* ── 餘額皆由交易推導，刪除紀錄自動回沖 ── */
+    function calc(accId){
+      let bal=0, tin=0, tout=0, min=0, mout=0;
+      const m = thisMonth();
+      for(const t of txns.value){
+        const inMonth = t.date.slice(0,7) === m;
+        if(t.type==='in' && t.accountId===accId){ bal+=t.amount; tin+=t.amount; if(inMonth) min+=t.amount; }
+        else if(t.type==='out' && t.accountId===accId){ bal-=t.amount; tout+=t.amount; if(inMonth) mout+=t.amount; }
+        else if(t.type==='tr'){
+          if(t.accountId===accId) bal-=t.amount;
+          if(t.toAccountId===accId) bal+=t.amount;
+        }
+      }
+      return { bal, tin, tout, min, mout };
+    }
+
+    const accountsView = computed(() => accounts.value.map(a => {
+      const c = calc(a.id);
+      return { ...a, balance:c.bal, totalIn:c.tin, totalOut:c.tout, monthIn:c.min, monthOut:c.mout,
+               pct: c.min>0 ? Math.round(c.mout/c.min*100) : 0 };
+    }));
+    const totalBalance = computed(() => accountsView.value.reduce((s,a)=>s+a.balance,0));
+    const monthIn  = computed(() => accountsView.value.reduce((s,a)=>s+a.monthIn,0));
+    const monthOut = computed(() => accountsView.value.reduce((s,a)=>s+a.monthOut,0));
+    const monthLabel = computed(() => `${new Date().getMonth()+1} 月`);
+
+    /* ── 紀錄列表 ── */
+    const sortedTxns = computed(() => [...txns.value].sort((x,y)=> y.date.localeCompare(x.date) || y.ts - x.ts));
+    const recentTxns = computed(() => sortedTxns.value.slice(0,5));
+    const groupedTxns = computed(() => {
+      const list = sortedTxns.value.filter(t => filterAcc.value==='all' || t.accountId===filterAcc.value || t.toAccountId===filterAcc.value);
+      const map = new Map();
+      for(const t of list){ if(!map.has(t.date)) map.set(t.date, []); map.get(t.date).push(t); }
+      return [...map.entries()].map(([date, items]) => ({date, items}));
+    });
+    const txnIcon = t => t.type==='in' ? '💰' : (t.type==='tr' ? '⇄' : catIcon(t.category));
+    const catLabel = t => t.sub ? `${t.category}／${t.sub}` : t.category;
+    const txnTitle = t => t.type==='in' ? (t.note || '收入分配')
+                       : t.type==='tr' ? '帳戶互轉'
+                       : (t.note ? `${catLabel(t)}・${t.note}` : catLabel(t));
+    function delTxn(t){
+      if(confirm('刪除這筆紀錄？相關帳戶餘額會自動回沖。')) txns.value = txns.value.filter(x => x.id !== t.id);
+    }
+
+    /* ── 記支出 ── */
+    const expOpen = ref(false);
+    const exp = reactive({ accountId:'', amount:null, category:'飲食', sub:'', note:'', date: today() });
+    const expAmtInput = ref(null);
+    const currentSubs = computed(() => CATEGORIES.find(c => c.name === exp.category)?.subs ?? []);
+    function selectCat(name){ exp.category = name; exp.sub = ''; }
+    function openExpense(accId){
+      Object.assign(exp, { accountId: accId || accounts.value[0]?.id || '', amount:null, category:'飲食', sub:'', note:'', date: today() });
+      expOpen.value = true;
+      nextTick(() => expAmtInput.value?.focus());
+    }
+    const expAfter = computed(() => {
+      const a = accountsView.value.find(x => x.id === exp.accountId);
+      return (a?.balance ?? 0) - (exp.amount || 0);
+    });
+    const expOver = computed(() => exp.accountId && exp.amount > 0 && expAfter.value < 0);
+    function confirmExpense(){
+      txns.value.push({ id:uid(), type:'out', accountId:exp.accountId, amount:exp.amount,
+                        category:exp.category, sub:exp.sub, note:exp.note, date:exp.date, ts:Date.now() });
+      expOpen.value = false;
+    }
+
+    /* ── 分配收入（含每月範本） ── */
+    const alloc = reactive({ note:'', total:null, date: today(), map:{} });
+    const saveTemplate = ref(true);
+    const allocSum = computed(() => accounts.value.reduce((s,a)=> s + (Number(alloc.map[a.id])||0), 0));
+    const allocLeft = computed(() => (alloc.total||0) - allocSum.value);
+    const hasTemplate = computed(() => !!settings.value.allocTemplate);
+    const monthAllocated = computed(() => txns.value.some(t => t.type==='in' && t.date.slice(0,7) === thisMonth()));
+    function applyTemplate(){
+      const t = settings.value.allocTemplate;
+      if(!t) return;
+      alloc.map = { ...t.map };
+      alloc.total = Object.values(t.map).reduce((s,v)=> s + (Number(v)||0), 0);
+      if(!alloc.note) alloc.note = `${new Date().getMonth()+1} 月薪資`;
+    }
+    function goAllocate(){ tab.value = 'allocate'; if(hasTemplate.value) applyTemplate(); }
+    function confirmAlloc(){
+      const note = alloc.note || `${new Date(alloc.date).getMonth()+1} 月收入`;
+      const tmplMap = {};
+      for(const a of accounts.value){
+        const amt = Number(alloc.map[a.id]) || 0;
+        if(amt > 0){
+          txns.value.push({ id:uid(), type:'in', accountId:a.id, amount:amt, note, date:alloc.date, ts:Date.now() });
+          tmplMap[a.id] = amt;
+        }
+      }
+      if(saveTemplate.value && Object.keys(tmplMap).length)
+        settings.value = { ...settings.value, allocTemplate: { map: tmplMap } };
+      Object.assign(alloc, { note:'', total:null, date: today(), map:{} });
+      tab.value = 'home';
+    }
+
+    /* ── 每月報表：淨存與各帳戶月末餘額（由完整交易史回算，不需另外存快照） ── */
+    const selMonth = ref('');
+    const report = computed(() => {
+      if(!txns.value.length) return [];
+      const sorted = [...txns.value].sort((a,b)=> a.date.localeCompare(b.date));
+      const firstKey = sorted[0].date.slice(0,7), curKey = thisMonth();
+      const monthsList = [];
+      let y = +firstKey.slice(0,4), m = +firstKey.slice(5,7);
+      while(monthsList.length < 60){
+        const key = `${y}-${String(m).padStart(2,'0')}`;
+        monthsList.push(key);
+        if(key >= curKey) break;
+        m++; if(m > 12){ m = 1; y++; }
+      }
+      const bal = {};
+      const rows = [];
+      for(const key of monthsList){
+        let tin = 0, tout = 0;
+        for(const t of txns.value){
+          if(t.date.slice(0,7) !== key) continue;
+          if(t.type === 'in'){ tin += t.amount; bal[t.accountId] = (bal[t.accountId]||0) + t.amount; }
+          else if(t.type === 'out'){ tout += t.amount; bal[t.accountId] = (bal[t.accountId]||0) - t.amount; }
+          else if(t.type === 'tr'){
+            bal[t.accountId] = (bal[t.accountId]||0) - t.amount;
+            bal[t.toAccountId] = (bal[t.toAccountId]||0) + t.amount;
+          }
+        }
+        rows.push({
+          month: key, tin, tout, net: tin - tout,
+          total: accounts.value.reduce((s,a)=> s + (bal[a.id]||0), 0),
+          perAcc: accounts.value.map(a => ({ name:a.name, color:a.color, balance: bal[a.id]||0 })),
+        });
+      }
+      return rows.reverse(); // 最新月份在最上面
+    });
+    const repMax = computed(() => Math.max(1, ...report.value.map(r => Math.abs(r.net))));
+    const barW = net => Math.round(Math.abs(net) / repMax.value * 100);
+    const savedMonths = computed(() => report.value.filter(r => r.net > 0).length);
+    function toggleMonth(key){ selMonth.value = selMonth.value === key ? '' : key; }
+    const monthLabelOf = key => `${key.slice(0,4)} 年 ${+key.slice(5,7)} 月`;
+
+    /* ── 帳戶互轉 ── */
+    const trOpen = ref(false);
+    const tr = reactive({ from:'', to:'', amount:null });
+    function openTransfer(){
+      tr.from = accounts.value[0]?.id; tr.to = accounts.value[1]?.id ?? accounts.value[0]?.id; tr.amount = null;
+      trOpen.value = true;
+    }
+    function confirmTransfer(){
+      txns.value.push({ id:uid(), type:'tr', accountId:tr.from, toAccountId:tr.to, amount:tr.amount, date: today(), ts:Date.now() });
+      trOpen.value = false;
+    }
+
+    /* ── 帳戶管理 ── */
+    const accOpen = ref(false);
+    const accForm = reactive({ id:'', name:'', color:PALETTE[0] });
+    function openAccEdit(a){
+      Object.assign(accForm, a ? { id:a.id, name:a.name, color:a.color } : { id:'', name:'', color:PALETTE[accounts.value.length % PALETTE.length] });
+      accOpen.value = true;
+    }
+    function saveAccount(){
+      if(accForm.id){
+        const a = accounts.value.find(x => x.id === accForm.id);
+        if(a){ a.name = accForm.name; a.color = accForm.color; }
+      }else{
+        accounts.value.push({ id:uid(), name:accForm.name, color:accForm.color });
+      }
+      accOpen.value = false;
+    }
+    function deleteAccount(){
+      if(!confirm(`刪除「${accForm.name}」？此帳戶的所有收支與轉帳紀錄也會一併刪除。`)) return;
+      accounts.value = accounts.value.filter(a => a.id !== accForm.id);
+      txns.value = txns.value.filter(t => t.accountId !== accForm.id && t.toAccountId !== accForm.id);
+      accOpen.value = false;
+    }
+
+    /* ── Excel 匯出 / 匯入（SheetJS）── */
+    const importInput = ref(null);
+    const TYPE_TXT = { in:'收入分配', out:'支出', tr:'轉帳' };
+    function exportXlsx(){
+      const wb = XLSX.utils.book_new();
+      const accRows = accountsView.value.map(a => ({
+        '帳戶ID':a.id, '帳戶名稱':a.name, '代表色':a.color, '目前餘額':a.balance
+      }));
+      const txRows = [...txns.value].sort((x,y)=> x.date.localeCompare(y.date) || x.ts - y.ts).map(t => ({
+        '紀錄ID':t.id, '日期':t.date, '類型':TYPE_TXT[t.type],
+        '帳戶':accName(t.accountId), '轉入帳戶': t.toAccountId ? accName(t.toAccountId) : '',
+        '金額':t.amount, '大分類':t.category || '', '子分類':t.sub || '', '備註':t.note || '',
+        '帳戶ID':t.accountId, '轉入帳戶ID':t.toAccountId || ''
+      }));
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(accRows), '帳戶');
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(txRows), '交易紀錄');
+      XLSX.writeFile(wb, `餘裕備份_${today()}.xlsx`);
+    }
+    function normDate(v){
+      if(v instanceof Date) return v.toISOString().slice(0,10);
+      if(typeof v === 'number') return new Date(Math.round((v - 25569) * 86400 * 1000)).toISOString().slice(0,10); // Excel 序列日期
+      const s = String(v ?? '').trim().replace(/\//g,'-');
+      const m = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
+      return m ? `${m[1]}-${m[2].padStart(2,'0')}-${m[3].padStart(2,'0')}` : today();
+    }
+    function importXlsx(ev){
+      const file = ev.target.files[0];
+      if(!file) return;
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        try{
+          const wb = XLSX.read(e.target.result, { type:'array', cellDates:true });
+          const accSheet = wb.Sheets['帳戶'], txSheet = wb.Sheets['交易紀錄'];
+          if(!accSheet || !txSheet) throw new Error('檔案需要包含「帳戶」與「交易紀錄」兩個工作表');
+          const newAccounts = XLSX.utils.sheet_to_json(accSheet).map((r,i) => ({
+            id: String(r['帳戶ID'] || uid()),
+            name: String(r['帳戶名稱'] || `帳戶 ${i+1}`),
+            color: String(r['代表色'] || PALETTE[i % PALETTE.length]),
+          }));
+          if(!newAccounts.length) throw new Error('「帳戶」工作表沒有資料');
+          const nameToId = Object.fromEntries(newAccounts.map(a => [a.name, a.id]));
+          const typeMap = { '收入分配':'in', '收入':'in', '支出':'out', '轉帳':'tr' };
+          const newTxns = XLSX.utils.sheet_to_json(txSheet).map((r,i) => {
+            const type = typeMap[String(r['類型'] || '').trim()] || 'out';
+            const accountId = String(r['帳戶ID'] || '') || nameToId[String(r['帳戶'] || '').trim()] || '';
+            const toId = String(r['轉入帳戶ID'] || '') || nameToId[String(r['轉入帳戶'] || '').trim()] || '';
+            return {
+              id: String(r['紀錄ID'] || uid()), type, accountId,
+              toAccountId: type === 'tr' ? toId : undefined,
+              amount: Number(r['金額']) || 0,
+              category: type === 'out' ? String(r['大分類'] || '其他') : undefined,
+              sub: type === 'out' ? String(r['子分類'] || '') : undefined,
+              note: String(r['備註'] || ''), date: normDate(r['日期']), ts: Date.now() + i,
+            };
+          }).filter(t => t.accountId && t.amount > 0 && (t.type !== 'tr' || t.toAccountId));
+          if(!confirm(`匯入「${file.name}」？\n將以檔案內容取代目前資料：${newAccounts.length} 個帳戶、${newTxns.length} 筆紀錄。`)) return;
+          accounts.value = newAccounts;
+          txns.value = newTxns;
+          tab.value = 'home';
+        }catch(err){
+          alert('匯入失敗：' + err.message);
+        }finally{
+          ev.target.value = '';
+        }
+      };
+      reader.readAsArrayBuffer(file);
+    }
+
+    return {
+      PALETTE, CATEGORIES,
+      accounts, tab, filterAcc,
+      num, fmt, accName,
+      accountsView, totalBalance, monthIn, monthOut, monthLabel,
+      recentTxns, groupedTxns, txnIcon, txnTitle, delTxn,
+      expOpen, exp, expAmtInput, openExpense, expAfter, expOver, confirmExpense,
+      currentSubs, selectCat,
+      importInput, exportXlsx, importXlsx,
+      token, userEmail, guest, authMode, auth, syncState,
+      submitAuth, useGuest, logoutConfirm,
+      alloc, allocSum, allocLeft, confirmAlloc,
+      saveTemplate, hasTemplate, monthAllocated, applyTemplate, goAllocate,
+      report, selMonth, barW, savedMonths, toggleMonth, monthLabelOf,
+      trOpen, tr, openTransfer, confirmTransfer,
+      accOpen, accForm, openAccEdit, saveAccount, deleteAccount,
+    };
+  }
+}).mount('#app');
+
+/* ── PWA：註冊 Service Worker（需 https 或 localhost） ── */
+if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost')) {
+  window.addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(()=>{}));
+}
+</script>
+</body>
+</html>

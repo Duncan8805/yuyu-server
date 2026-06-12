@@ -1,0 +1,17 @@
+{
+  "name": "餘裕｜帳戶餘額記帳",
+  "short_name": "餘裕",
+  "description": "先把收入分配到各帳戶，消費時看的是還剩多少能花。",
+  "lang": "zh-Hant-TW",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#F3F5F1",
+  "theme_color": "#11533C",
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-512-maskable.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

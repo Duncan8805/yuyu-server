@@ -1,0 +1,6 @@
+bin/
+obj/
+yuyu.db
+yuyu.db-*
+appsettings.json
+.git/
