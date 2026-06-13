@@ -255,35 +255,36 @@ input,select{font-family:inherit;font-size:1rem;color:var(--ink)}
 <body>
 <div id="app" v-cloak>
 
-  <!-- ════════ 登入 / 註冊 ════════ -->
-  <div v-if="!token && !guest" style="min-height:100dvh;display:flex;align-items:center;justify-content:center;padding:1rem">
-    <div class="card" style="width:100%;max-width:380px">
+  <!-- ════════ 雲端連線設定 ════════ -->
+  <div v-if="!isConfigured && !guest" style="min-height:100dvh;display:flex;align-items:center;justify-content:center;padding:1rem">
+    <div class="card" style="width:100%;max-width:460px">
       <div class="brand" style="justify-content:center;font-size:1.5rem;margin-bottom:.2rem;display:flex">餘裕</div>
       <p class="hint" style="text-align:center;margin-bottom:1.3rem">先看剩多少，再決定怎麼花</p>
+      <p class="hint" style="margin-bottom:1rem">第一次使用請貼上你的 TiDB Cloud Data Service 金鑰（設定一次後會記住，換裝置時再貼一次即可）。設定步驟在 README.md。</p>
       <div class="field">
-        <label>Email</label>
-        <input class="input" type="email" v-model.trim="auth.email" placeholder="you@example.com" autocomplete="username">
+        <label>Endpoint 網址</label>
+        <input class="input" v-model.trim="auth.endpoint" placeholder="https://xxx.data.tidbcloud.com/api/v1beta/app/...">
       </div>
       <div class="field">
-        <label>密碼{{ authMode==='register' ? '（至少 8 碼）' : '' }}</label>
-        <input class="input" type="password" v-model="auth.password" autocomplete="current-password" @keyup.enter="submitAuth">
+        <label>Public Key</label>
+        <input class="input" v-model.trim="auth.publicKey" placeholder="例：xxxxxxxx.root">
+      </div>
+      <div class="field">
+        <label>Private Key</label>
+        <input class="input" type="password" v-model="auth.privateKey" @keyup.enter="submitAuth">
       </div>
       <p class="hint warn" v-if="auth.error">{{ auth.error }}</p>
       <br>
-      <button class="btn" :disabled="auth.busy || !auth.email || !auth.password" @click="submitAuth">
-        {{ auth.busy ? '處理中…' : (authMode==='login' ? '登入' : '建立帳號') }}
+      <button class="btn" :disabled="auth.busy || !auth.endpoint || !auth.publicKey || !auth.privateKey" @click="submitAuth">
+        {{ auth.busy ? '驗證中…' : '連線並載入資料' }}
       </button>
       <p class="hint" style="text-align:center;margin-top:1rem">
-        <button style="color:var(--primary);font-weight:500" @click="authMode = authMode==='login' ? 'register' : 'login'; auth.error=''">
-          {{ authMode==='login' ? '還沒有帳號？註冊' : '已經有帳號？登入' }}
-        </button>
-        　
-        <button style="color:var(--ink-2)" @click="useGuest">先離線試用</button>
+        <button style="color:var(--ink-2)" @click="useGuest">先離線試用（資料只存在這台裝置）</button>
       </p>
     </div>
   </div>
 
-  <template v-if="token || guest">
+  <template v-if="isConfigured || guest">
   <header class="topbar">
     <div class="topbar-in">
       <div class="brand">餘裕 <small>先看剩多少，再決定怎麼花</small></div>
@@ -483,21 +484,21 @@ input,select{font-family:inherit;font-size:1rem;color:var(--ink)}
         <input type="file" accept=".xlsx" ref="importInput" style="display:none" @change="importXlsx">
       </div>
 
-      <div class="sec-title" style="margin-top:1.6rem"><span>帳號</span></div>
-      <div class="card" v-if="token">
+      <div class="sec-title" style="margin-top:1.6rem"><span>雲端連線</span></div>
+      <div class="card" v-if="isConfigured">
         <p class="hint">
-          已登入：<b>{{ userEmail }}</b>
-          <template v-if="syncState==='saving'">・雲端儲存中…</template>
+          直連 <b>TiDB Cloud</b>
+          <template v-if="syncState==='saving'">・儲存中…</template>
           <template v-else-if="syncState==='offline'"><span class="warn">・目前離線，資料先存在這台裝置，恢復連線後會自動同步</span></template>
-          <template v-else>・已同步到雲端</template>
+          <template v-else>・已同步</template>
         </p>
         <br>
-        <button class="btn ghost" @click="logoutConfirm">登出</button>
+        <button class="btn ghost" @click="logoutConfirm">清除這台裝置的金鑰</button>
       </div>
       <div class="card" v-else>
-        <p class="hint">目前是離線試用模式，資料只存在這台裝置的瀏覽器裡。登入後資料會存到伺服器，換裝置也能用。</p>
+        <p class="hint">目前是離線模式，資料只存在這台裝置。設定 TiDB 金鑰後就能跨裝置同步。</p>
         <br>
-        <button class="btn" @click="guest=false">前往登入／註冊</button>
+        <button class="btn" @click="guest=false">設定雲端連線</button>
       </div>
     </section>
   </main>
@@ -658,77 +659,112 @@ createApp({
     const tab = ref('home');
     const filterAcc = ref('all');
 
-    /* ── 登入與同步 ──
-       資料庫在後端（SQLite，依使用者隔離）；localStorage 是離線快取。
-       每次變更：先存本機，再防抖 0.8 秒把整份快照 PUT 回伺服器。 */
+    /* ── 雲端同步（TiDB Cloud Data Service）──
+       架構：前端直接打 TiDB 的 HTTP SQL API；不需要自架後端。
+       認證：API 金鑰（Public Key + Private Key），用 HTTP Basic Auth 帶上。
+       本機快取在 localStorage，離線可用，恢復連線自動同步。 */
     const lsGet = k => { try{ return localStorage.getItem(k); }catch(e){ return null; } };
     const lsSet = (k,v) => { try{ v===null ? localStorage.removeItem(k) : localStorage.setItem(k,v); }catch(e){} };
-    const token = ref(lsGet('yuyu-token') || '');
-    const userEmail = ref(lsGet('yuyu-email') || '');
+
+    const apiCfg = reactive({
+      endpoint: lsGet('yuyu-endpoint') || '',   // 例 https://xxx.data.tidbcloud.com/api/v1beta/app/...
+      publicKey: lsGet('yuyu-pub') || '',
+      privateKey: lsGet('yuyu-priv') || '',
+    });
+    const isConfigured = computed(() => !!(apiCfg.endpoint && apiCfg.publicKey && apiCfg.privateKey));
     const guest = ref(lsGet('yuyu-guest') === '1');
-    const authMode = ref('login');
-    const auth = reactive({ email:'', password:'', busy:false, error:'' });
+    const auth = reactive({ endpoint:'', publicKey:'', privateKey:'', busy:false, error:'' });
     const syncState = ref('idle'); // idle | saving | offline
     let pulling = false, pushTimer = null;
 
+    function authHeader(){
+      return 'Basic ' + btoa(apiCfg.publicKey + ':' + apiCfg.privateKey);
+    }
+    async function callEndpoint(name, params){
+      const url = apiCfg.endpoint.replace(/\/$/, '') + '/' + name;
+      // owner 自動帶上 Public Key 當資料隔離鑰匙；TiDB 端的 SQL 用它 WHERE
+      // TiDB Data Service 的參數放在 body 頂層（不需 params 包裝）
+      const body = { owner: apiCfg.publicKey, ...(params || {}) };
+      const res = await fetch(url, {
+        method:'POST',
+        headers:{ 'Content-Type':'application/json', Authorization: authHeader() },
+        body: JSON.stringify(body),
+      });
+      if(!res.ok){
+        const t = await res.text().catch(()=>'');
+        throw new Error('API ' + res.status + ': ' + t.slice(0,200));
+      }
+      return res.json();
+    }
     async function submitAuth(){
       auth.error = ''; auth.busy = true;
       try{
-        const res = await fetch(`/api/auth/${authMode.value === 'login' ? 'login' : 'register'}`, {
-          method:'POST', headers:{ 'Content-Type':'application/json' },
-          body: JSON.stringify({ email: auth.email, password: auth.password }),
-        });
-        const d = await res.json().catch(() => ({}));
-        if(!res.ok) throw new Error(d.message || '發生錯誤，請再試一次');
-        token.value = d.token; userEmail.value = d.email;
-        lsSet('yuyu-token', d.token); lsSet('yuyu-email', d.email);
+        const tmp = { endpoint:auth.endpoint.trim(), publicKey:auth.publicKey.trim(), privateKey:auth.privateKey.trim() };
+        Object.assign(apiCfg, tmp);
+        await pullData();   // 用新金鑰試打一次，成功才存
+        lsSet('yuyu-endpoint', tmp.endpoint);
+        lsSet('yuyu-pub', tmp.publicKey);
+        lsSet('yuyu-priv', tmp.privateKey);
         guest.value = false; lsSet('yuyu-guest', null);
-        auth.password = '';
-        await pullData();
+        auth.privateKey = '';
       }catch(err){
-        auth.error = (err instanceof TypeError) ? '連不上伺服器，請確認網路或稍後再試' : err.message;
+        Object.assign(apiCfg, { endpoint:'', publicKey:'', privateKey:'' });
+        auth.error = (err instanceof TypeError) ? '連不上 TiDB，請檢查 Endpoint 網址' : ('金鑰可能不正確：' + err.message);
       }finally{ auth.busy = false; }
     }
     async function pullData(){
-      if(!token.value) return;
-      try{
-        const res = await fetch('/api/data', { headers:{ Authorization:'Bearer ' + token.value } });
-        if(res.status === 401){ doLogout(); return; }
-        if(!res.ok) return;
-        const d = await res.json();
-        pulling = true;
-        accounts.value = d.accounts; txns.value = d.txns;
-        if(d.settings) settings.value = d.settings;
-        nextTick(() => { pulling = false; });
-      }catch(e){ /* 離線時用本機快取繼續 */ }
+      if(!isConfigured.value) return;
+      const d = await callEndpoint('get_data', {});
+      const rows = (d.data && d.data.rows) || d.rows || [];
+      const blob = rows[0];
+      pulling = true;
+      if(blob){
+        accounts.value = JSON.parse(blob.accounts || '[]');
+        txns.value = JSON.parse(blob.txns || '[]');
+        settings.value = JSON.parse(blob.settings || '{"allocTemplate":null}');
+      }else{
+        // 第一次連線：此 Public Key 還沒資料列，幫他建一個初始狀態
+        accounts.value = [
+          { id:'a1', name:'儲蓄', color:'#11533C' },
+          { id:'a2', name:'彈性運用', color:'#1F5FA8' },
+          { id:'a3', name:'日常花費', color:'#C99A3B' },
+        ];
+        txns.value = [];
+        settings.value = { allocTemplate: null };
+        await callEndpoint('put_data', {
+          accounts_json: JSON.stringify(accounts.value),
+          txns_json: JSON.stringify(txns.value),
+          settings_json: JSON.stringify(settings.value),
+        });
+      }
+      nextTick(() => { pulling = false; });
     }
     function schedulePush(){
-      if(!token.value) return;
+      if(!isConfigured.value) return;
       syncState.value = 'saving';
       clearTimeout(pushTimer);
       pushTimer = setTimeout(async () => {
         try{
-          const res = await fetch('/api/data', {
-            method:'PUT',
-            headers:{ 'Content-Type':'application/json', Authorization:'Bearer ' + token.value },
-            body: JSON.stringify({ accounts: accounts.value, txns: txns.value, settings: settings.value }),
+          await callEndpoint('put_data', {
+            accounts_json: JSON.stringify(accounts.value),
+            txns_json: JSON.stringify(txns.value),
+            settings_json: JSON.stringify(settings.value),
           });
-          if(res.status === 401){ doLogout(); return; }
-          syncState.value = res.ok ? 'idle' : 'offline';
+          syncState.value = 'idle';
         }catch(e){ syncState.value = 'offline'; }
       }, 800);
     }
     window.addEventListener('online', () => { if(syncState.value === 'offline') schedulePush(); });
     function doLogout(){
       clearTimeout(pushTimer);
-      token.value = ''; userEmail.value = '';
-      lsSet('yuyu-token', null); lsSet('yuyu-email', null); lsSet(KEY, null);
+      Object.assign(apiCfg, { endpoint:'', publicKey:'', privateKey:'' });
+      lsSet('yuyu-endpoint', null); lsSet('yuyu-pub', null); lsSet('yuyu-priv', null); lsSet(KEY, null);
       accounts.value = []; txns.value = [];
       guest.value = false; lsSet('yuyu-guest', null);
       tab.value = 'home';
     }
     function logoutConfirm(){
-      if(confirm('登出？這台裝置上的快取會清除（伺服器上的資料不受影響）。')) doLogout();
+      if(confirm('清除這台裝置的金鑰？\n資料還在 TiDB 雲端，下次貼回金鑰就會回來。')) doLogout();
     }
     function useGuest(){
       guest.value = true; lsSet('yuyu-guest', '1');
@@ -740,7 +776,7 @@ createApp({
         ];
       }
     }
-    if(token.value) pullData();
+    if(isConfigured.value) pullData().catch(()=>{ syncState.value='offline'; });
 
     watch([accounts, txns, settings], () => {
       save({ accounts: accounts.value, txns: txns.value, settings: settings.value });
@@ -1004,7 +1040,7 @@ createApp({
       expOpen, exp, expAmtInput, openExpense, expAfter, expOver, confirmExpense,
       currentSubs, selectCat,
       importInput, exportXlsx, importXlsx,
-      token, userEmail, guest, authMode, auth, syncState,
+      apiCfg, isConfigured, guest, auth, syncState,
       submitAuth, useGuest, logoutConfirm,
       alloc, allocSum, allocLeft, confirmAlloc,
       saveTemplate, hasTemplate, monthAllocated, applyTemplate, goAllocate,

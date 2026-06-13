@@ -1,5 +1,5 @@
 /* 餘裕 PWA Service Worker：App Shell 快取，離線可用 */
-const CACHE = 'yuyu-v4';
+const CACHE = 'yuyu-pwa-v4';
 const ASSETS = [
   './',
   './index.html',
@@ -25,7 +25,6 @@ self.addEventListener('activate', (e) => {
 /* 快取優先，沒有才走網路；成功的 GET 回應順手存進快取（涵蓋 Google Fonts） */
 self.addEventListener('fetch', (e) => {
   if (e.request.method !== 'GET') return;
-  if (new URL(e.request.url).pathname.startsWith('/api/')) return; // API 永遠走網路，不快取
   e.respondWith(
     caches.match(e.request).then((hit) => {
       if (hit) return hit;
