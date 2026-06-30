@@ -234,6 +234,16 @@ input,select{font-family:inherit;font-size:1rem;color:var(--ink)}
 .inst-badge{font-size:.66rem;font-weight:600;color:var(--ink-2);background:var(--surface);border:1px solid var(--line);border-radius:999px;padding:.05rem .45rem}
 .inst-badge.ok{color:var(--primary);border-color:var(--primary)}
 
+.chart-svg{width:100%;height:auto;aspect-ratio:3 / 1;display:block;margin:.2rem 0 .6rem}
+.pie-wrap{display:flex;align-items:center;gap:1rem;flex-wrap:wrap;margin:.4rem 0 .2rem}
+.pie-svg{width:140px;height:140px;flex:0 0 auto}
+.pie-legend{flex:1;min-width:11rem;display:flex;flex-direction:column;gap:.3rem}
+.pie-leg{display:flex;align-items:center;gap:.4rem;font-size:.8rem;color:var(--ink-2)}
+.pie-leg .alloc-dot{flex:0 0 auto}
+.pie-leg-name{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--ink)}
+.pie-leg-pct{font-weight:600;color:var(--ink)}
+.pie-leg-amt{flex:0 0 auto;min-width:5.5rem;text-align:right}
+
 .empty{
   text-align:center;padding:2.5rem 1rem;color:var(--ink-2);
 }
@@ -445,6 +455,48 @@ input,select{font-family:inherit;font-size:1rem;color:var(--ink)}
     <section v-if="tab==='report'">
       <div class="sec-title"><span>每月儲蓄報表</span></div>
       <template v-if="report.length">
+        <!-- 折線圖：每月結餘走勢 -->
+        <div class="card" v-if="lineChart">
+          <div class="sec-title"><span>每月結餘走勢</span></div>
+          <svg class="chart-svg" viewBox="0 0 360 120" preserveAspectRatio="xMidYMid meet" role="img" aria-label="每月結餘折線圖">
+            <line :x1="0" :x2="lineChart.W" :y1="lineChart.zeroY" :y2="lineChart.zeroY" stroke="var(--line)" stroke-width="1" stroke-dasharray="3 3"/>
+            <polyline :points="lineChart.poly" fill="none" stroke="var(--primary)" stroke-width="1.6" vector-effect="non-scaling-stroke" stroke-linejoin="round" stroke-linecap="round"/>
+            <g v-for="(p,i) in lineChart.pts" :key="i">
+              <circle :cx="p.x" :cy="p.y" r="2.4" :fill="p.net>=0 ? 'var(--primary)' : '#B5402C'"/>
+              <text v-if="lineChart.showLabel" :x="p.x" :y="lineChart.H-7" text-anchor="middle" font-size="8" fill="var(--ink-2)">{{ p.label }}</text>
+            </g>
+          </svg>
+          <p class="hint">線在虛線（0）以上代表當月有存到錢。{{ report.length }} 個月中有 <b style="color:var(--primary)">{{ savedMonths }}</b> 個月有結餘。</p>
+        </div>
+
+        <!-- 圓餅圖：某月消費分類比例 -->
+        <div class="card" v-if="monthsWithOut.length">
+          <div class="sec-title"><span>消費分類比例</span></div>
+          <div class="field" style="margin-bottom:.4rem">
+            <select class="input" v-model="pieMonthSel">
+              <option v-for="m in monthsWithOut" :key="m" :value="m">{{ monthLabelOf(m) }}</option>
+            </select>
+          </div>
+          <template v-if="pieChart.total">
+            <div class="pie-wrap">
+              <svg class="pie-svg" viewBox="0 0 140 140" role="img" aria-label="消費分類圓餅圖">
+                <circle v-if="pieChart.single" cx="70" cy="70" r="64" :fill="pieChart.single.color"/>
+                <path v-else v-for="s in pieChart.slices" :key="s.name" :d="s.d" :fill="s.color" stroke="var(--bg)" stroke-width="1"/>
+              </svg>
+              <div class="pie-legend">
+                <div class="pie-leg" v-for="s in pieChart.slices" :key="s.name">
+                  <i class="alloc-dot" :style="{background:s.color}"></i>
+                  <span class="pie-leg-name">{{ s.icon }} {{ s.name }}</span>
+                  <span class="pie-leg-pct mono">{{ s.pct }}%</span>
+                  <span class="pie-leg-amt mono">{{ fmt(s.amount) }}</span>
+                </div>
+              </div>
+            </div>
+            <p class="hint">{{ monthLabelOf(pieChart.key) }}總支出 <b class="mono">{{ fmt(pieChart.total) }}</b></p>
+          </template>
+          <div class="empty" v-else><p>這個月還沒有支出紀錄。</p></div>
+        </div>
+
         <div class="card">
           <p class="hint">淨存 ＝ 當月分配收入 − 當月支出。{{ report.length }} 個月中有 <b style="color:var(--primary)">{{ savedMonths }}</b> 個月有存到錢。點任一個月可展開當月底各帳戶餘額。</p>
           <br>
@@ -1100,6 +1152,58 @@ createApp({
     function toggleMonth(key){ selMonth.value = selMonth.value === key ? '' : key; }
     const monthLabelOf = key => `${key.slice(0,4)} 年 ${+key.slice(5,7)} 月`;
 
+    /* ── 折線圖：每月結餘（淨存）走勢，純 SVG 手繪 ── */
+    const lineChart = computed(() => {
+      const data = [...report.value].reverse(); // 由舊到新（左→右）
+      if(!data.length) return null;
+      const W = 360, H = 120, padX = 16, padTop = 14, padBot = 24;
+      const nets = data.map(d => d.net);
+      let max = Math.max(...nets, 0), min = Math.min(...nets, 0);
+      if(max === min){ max += 1; min -= 1; }
+      const xOf = i => data.length === 1 ? W/2 : padX + i*(W-2*padX)/(data.length-1);
+      const yOf = v => padTop + (max - v)/(max - min)*(H - padTop - padBot);
+      const pts = data.map((d,i) => ({ x:+xOf(i).toFixed(1), y:+yOf(d.net).toFixed(1), net:d.net, label:`${+d.month.slice(5,7)}月` }));
+      return { W, H, zeroY:+yOf(0).toFixed(1), poly: pts.map(p=>`${p.x},${p.y}`).join(' '), pts,
+               showLabel: pts.length <= 12 };
+    });
+
+    /* ── 圓餅圖：某月消費分類比例 ── */
+    const monthsWithOut = computed(() => {
+      const set = new Set(txns.value.filter(t => t.type === 'out').map(t => t.date.slice(0,7)));
+      return [...set].sort().reverse();
+    });
+    const pieMonthSel = ref('');
+    const pieMonth = computed(() => pieMonthSel.value || monthsWithOut.value[0] || thisMonth());
+    const PIE_COLORS = ['#11533C','#1F5FA8','#C99A3B','#7A4A8C','#B5402C','#0E7C7B','#5B6B61','#9C6B2E','#3A7D44'];
+    function slicePath(cx, cy, r, startDeg, endDeg){
+      const p = (deg) => { const a=(deg-90)*Math.PI/180; return [cx+r*Math.cos(a), cy+r*Math.sin(a)]; };
+      const [x1,y1] = p(startDeg), [x2,y2] = p(endDeg);
+      const large = endDeg - startDeg > 180 ? 1 : 0;
+      return `M${cx} ${cy} L${x1.toFixed(2)} ${y1.toFixed(2)} A${r} ${r} 0 ${large} 1 ${x2.toFixed(2)} ${y2.toFixed(2)} Z`;
+    }
+    const pieChart = computed(() => {
+      const key = pieMonth.value;
+      const sums = {};
+      for(const t of txns.value){
+        if(t.type === 'out' && t.date.slice(0,7) === key){
+          const c = t.category || '其他';
+          sums[c] = (sums[c] || 0) + t.amount;
+        }
+      }
+      const entries = Object.entries(sums).sort((a,b)=> b[1]-a[1]);
+      const total = entries.reduce((s,[,v])=> s+v, 0);
+      if(!total) return { key, total:0, slices:[], single:null };
+      let acc = 0;
+      const slices = entries.map(([name,amount],i) => {
+        const frac = amount/total, start = acc*360, end = (acc+frac)*360;
+        acc += frac;
+        return { name, icon:catIcon(name), amount, pct: Math.round(frac*100),
+                 color: PIE_COLORS[i % PIE_COLORS.length], d: slicePath(70,70,64,start,end) };
+      });
+      // 只有一類時整圈，用 circle 畫（path 起訖點重合會畫不出來）
+      return { key, total, slices, single: slices.length === 1 ? slices[0] : null };
+    });
+
     /* ── 帳戶互轉 ── */
     const trOpen = ref(false);
     const tr = reactive({ from:'', to:'', amount:null });
@@ -1147,10 +1251,17 @@ createApp({
         '紀錄ID':t.id, '日期':t.date, '類型':TYPE_TXT[t.type],
         '帳戶':accName(t.accountId), '轉入帳戶': t.toAccountId ? accName(t.toAccountId) : '',
         '金額':t.amount, '大分類':t.category || '', '子分類':t.sub || '', '備註':t.note || '',
-        '帳戶ID':t.accountId, '轉入帳戶ID':t.toAccountId || ''
+        '帳戶ID':t.accountId, '轉入帳戶ID':t.toAccountId || '',
+        '分期ID':t.instId || '', '期次':t.period || ''   // 保留分期關聯，匯入後不會重複扣
+      }));
+      const instRows = installments.value.map(p => ({
+        '分期ID':p.id, '名稱':p.name, '總金額':p.total, '期數':p.periods,
+        '扣款帳戶':accName(p.accountId), '扣款帳戶ID':p.accountId,
+        '第一期月份':p.startMonth, '大分類':p.category || '', '子分類':p.sub || ''
       }));
       XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(accRows), '帳戶');
       XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(txRows), '交易紀錄');
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(instRows), '分期');
       XLSX.writeFile(wb, `餘裕備份_${today()}.xlsx`);
     }
     function normDate(v){
@@ -1159,6 +1270,12 @@ createApp({
       const s = String(v ?? '').trim().replace(/\//g,'-');
       const m = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
       return m ? `${m[1]}-${m[2].padStart(2,'0')}-${m[3].padStart(2,'0')}` : today();
+    }
+    function normMonth(v){
+      if(v instanceof Date) return v.toISOString().slice(0,7);
+      const s = String(v ?? '').trim().replace(/\//g,'-');
+      const m = s.match(/^(\d{4})-(\d{1,2})/);
+      return m ? `${m[1]}-${m[2].padStart(2,'0')}` : thisMonth();
     }
     function importXlsx(ev){
       const file = ev.target.files[0];
@@ -1181,6 +1298,7 @@ createApp({
             const type = typeMap[String(r['類型'] || '').trim()] || 'out';
             const accountId = String(r['帳戶ID'] || '') || nameToId[String(r['帳戶'] || '').trim()] || '';
             const toId = String(r['轉入帳戶ID'] || '') || nameToId[String(r['轉入帳戶'] || '').trim()] || '';
+            const instId = String(r['分期ID'] || '');
             return {
               id: String(r['紀錄ID'] || uid()), type, accountId,
               toAccountId: type === 'tr' ? toId : undefined,
@@ -1188,11 +1306,29 @@ createApp({
               category: type === 'out' ? String(r['大分類'] || '其他') : undefined,
               sub: type === 'out' ? String(r['子分類'] || '') : undefined,
               note: String(r['備註'] || ''), date: normDate(r['日期']), ts: Date.now() + i,
+              instId: instId || undefined,
+              period: instId ? (Number(r['期次']) || undefined) : undefined,
             };
           }).filter(t => t.accountId && t.amount > 0 && (t.type !== 'tr' || t.toAccountId));
-          if(!confirm(`匯入「${file.name}」？\n將以檔案內容取代目前資料：${newAccounts.length} 個帳戶、${newTxns.length} 筆紀錄。`)) return;
+          const instSheet = wb.Sheets['分期'];
+          let newInstallments = null;
+          if(instSheet){
+            newInstallments = XLSX.utils.sheet_to_json(instSheet).map((r,i) => ({
+              id: String(r['分期ID'] || uid()),
+              name: String(r['名稱'] || `分期 ${i+1}`),
+              total: Number(r['總金額']) || 0,
+              periods: Number(r['期數']) || 1,
+              accountId: String(r['扣款帳戶ID'] || '') || nameToId[String(r['扣款帳戶'] || '').trim()] || '',
+              startMonth: normMonth(r['第一期月份']),
+              category: String(r['大分類'] || '帳單'),
+              sub: String(r['子分類'] || ''),
+            })).filter(p => p.name && p.accountId && p.total > 0 && p.periods >= 2);
+          }
+          const instMsg = newInstallments ? `、${newInstallments.length} 筆分期` : '';
+          if(!confirm(`匯入「${file.name}」？\n將以檔案內容取代目前資料：${newAccounts.length} 個帳戶、${newTxns.length} 筆紀錄${instMsg}。`)) return;
           accounts.value = newAccounts;
           txns.value = newTxns;
+          if(newInstallments) settings.value = { ...settings.value, installments: newInstallments };
           tab.value = 'home';
         }catch(err){
           alert('匯入失敗：' + err.message);
@@ -1220,6 +1356,7 @@ createApp({
       instOpen, instForm, instSubs, instValid, PERIOD_PRESETS,
       openInst, saveInst, delInst, instSelectCat, periodAmount,
       report, selMonth, barW, savedMonths, toggleMonth, monthLabelOf,
+      lineChart, pieChart, monthsWithOut, pieMonthSel, pieMonth,
       trOpen, tr, openTransfer, confirmTransfer,
       accOpen, accForm, openAccEdit, saveAccount, deleteAccount,
     };
