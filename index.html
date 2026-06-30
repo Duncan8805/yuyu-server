@@ -227,6 +227,13 @@ input,select{font-family:inherit;font-size:1rem;color:var(--ink)}
 .rep-line{display:flex;justify-content:space-between;align-items:center;padding:.22rem 0;font-size:.86rem;color:var(--ink-2)}
 .rep-line b{color:var(--ink);font-weight:600}
 
+.inst-row{display:flex;align-items:center;gap:.5rem;padding:.4rem 0;border-bottom:1px dashed var(--line)}
+.inst-row:last-child{border-bottom:0}
+.inst-main{flex:1;text-align:left;min-width:0}
+.inst-title{font-size:.9rem;font-weight:600;color:var(--ink);display:flex;align-items:center;gap:.45rem}
+.inst-badge{font-size:.66rem;font-weight:600;color:var(--ink-2);background:var(--surface);border:1px solid var(--line);border-radius:999px;padding:.05rem .45rem}
+.inst-badge.ok{color:var(--primary);border-color:var(--primary)}
+
 .empty{
   text-align:center;padding:2.5rem 1rem;color:var(--ink-2);
 }
@@ -398,9 +405,39 @@ input,select{font-family:inherit;font-size:1rem;color:var(--ink)}
         <label class="hint" style="display:flex;align-items:center;gap:.45rem;margin-top:.9rem;cursor:pointer">
           <input type="checkbox" v-model="saveTemplate"> 存成每月範本（下個月可一鍵套用同樣的分配）
         </label>
+        <div class="alloc-sum" v-if="dueThisAllocMonth.length" style="margin-top:.9rem">
+          <span>本月分期將扣 <b class="mono">{{ fmt(dueThisAllocSum) }}</b></span>
+          <span class="hint">確認分配後自動扣款</span>
+        </div>
+        <div class="rep-detail" v-if="dueThisAllocMonth.length">
+          <div class="rep-line" v-for="p in dueThisAllocMonth" :key="p.id">
+            <span>💳 {{ p.name }}（第 {{ p.nextPeriod }}/{{ p.periods }} 期・{{ accName(p.accountId) }}）</span>
+            <b class="mono">−{{ fmt(p.nextAmount) }}</b>
+          </div>
+        </div>
         <br>
         <button class="btn" :disabled="allocSum<=0 || allocLeft<0" @click="confirmAlloc">確認分配</button>
         <p class="hint" style="margin-top:.6rem" v-if="allocLeft>0">未分配的 {{ fmt(allocLeft) }} 不會記入任何帳戶（例如留在薪轉戶）。</p>
+      </div>
+
+      <!-- 分期付款管理 -->
+      <div class="sec-title" style="margin-top:1.6rem"><span>分期付款</span><button class="lnk" @click="openInst()">＋ 新增分期</button></div>
+      <div class="card">
+        <p class="hint">把一筆大額消費拆成每月扣款。每次「確認分配」時，會從你指定的帳戶預算自動扣掉當期金額；沒分配的月份就不扣。</p>
+        <template v-if="installmentsView.length">
+          <div class="rep-detail" style="margin-top:.4rem">
+            <div class="inst-row" v-for="p in installmentsView" :key="p.id">
+              <button class="inst-main" @click="openInst(p)">
+                <div class="inst-title">💳 {{ p.name }}
+                  <span class="inst-badge" :class="p.done?'ok':''">{{ p.done ? '已結清' : p.paidCount + '/' + p.periods + ' 期' }}</span>
+                </div>
+                <div class="txn-sub">{{ accName(p.accountId) }}・每月 {{ fmt(p.perMonth) }}・<template v-if="p.done">總額 {{ fmt(p.total) }}</template><template v-else>剩 {{ fmt(p.remainAmt) }}</template></div>
+              </button>
+              <button class="txn-del" @click="delInst(p)" aria-label="刪除這個分期">✕</button>
+            </div>
+          </div>
+        </template>
+        <p class="hint" v-else style="margin-top:.6rem">目前沒有分期。</p>
       </div>
     </section>
 
@@ -617,6 +654,68 @@ input,select{font-family:inherit;font-size:1rem;color:var(--ink)}
     </div>
   </div>
 
+  <!-- ════════ 新增 / 編輯分期 ════════ -->
+  <div class="overlay" v-if="instOpen" @click.self="instOpen=false">
+    <div class="sheet" role="dialog" aria-label="分期付款設定">
+      <div class="sheet-head"><h2>{{ instForm.id ? '編輯分期' : '新增分期' }}</h2><button @click="instOpen=false" aria-label="關閉">✕</button></div>
+
+      <div class="field">
+        <label>買了什麼</label>
+        <input class="input" v-model.trim="instForm.name" placeholder="例如：手機、家電">
+      </div>
+
+      <div class="row2">
+        <div class="field">
+          <label>總金額</label>
+          <input class="input amt" type="number" inputmode="numeric" min="0" v-model.number="instForm.total" placeholder="8600">
+        </div>
+        <div class="field">
+          <label>第一期月份</label>
+          <input class="input" type="month" v-model="instForm.startMonth">
+        </div>
+      </div>
+
+      <div class="field">
+        <label>分幾期</label>
+        <div class="chips">
+          <button class="chip" v-for="n in PERIOD_PRESETS" :key="n" :class="{on:instForm.periods===n}" @click="instForm.periods=n">{{ n }} 期</button>
+          <input class="input amt" type="number" inputmode="numeric" min="2" v-model.number="instForm.periods" style="width:5.5rem" aria-label="自訂期數">
+        </div>
+      </div>
+
+      <div class="field">
+        <label>從哪個帳戶預算扣？</label>
+        <div class="chips">
+          <button class="chip" v-for="a in accountsView" :key="a.id"
+                  :class="{on:instForm.accountId===a.id}" @click="instForm.accountId=a.id">
+            {{ a.name }}（<b>{{ num(a.balance) }}</b>）
+          </button>
+        </div>
+      </div>
+
+      <div class="field">
+        <label>分類</label>
+        <div class="chips">
+          <button class="chip" v-for="c in CATEGORIES" :key="c.name"
+                  :class="{on:instForm.category===c.name}" @click="instSelectCat(c.name)">{{ c.icon }} {{ c.name }}</button>
+        </div>
+      </div>
+      <div class="field" v-if="instSubs.length">
+        <label>子分類（選填）</label>
+        <div class="chips">
+          <button class="chip" :class="{on:instForm.sub===''}" @click="instForm.sub=''">不細分</button>
+          <button class="chip" v-for="s in instSubs" :key="s" :class="{on:instForm.sub===s}" @click="instForm.sub=s">{{ s }}</button>
+        </div>
+      </div>
+
+      <p class="hint ok" v-if="instValid">每月扣 {{ fmt(periodAmount(instForm.total, instForm.periods, 1)) }}，共 {{ instForm.periods }} 期；之後每次「確認分配」自動從「{{ accName(instForm.accountId) }}」扣一期。</p>
+      <br>
+      <button class="btn" :disabled="!instValid" @click="saveInst">儲存分期</button>
+      <br>
+      <button class="btn ghost" v-if="instForm.id" @click="delInst(instForm)">刪除這個分期</button>
+    </div>
+  </div>
+
 </div>
 
 <script src="https://unpkg.com/vue@3.4.38/dist/vue.global.prod.js"></script>
@@ -655,7 +754,7 @@ createApp({
       { id:'a3', name:'日常花費', color:'#C99A3B' },
     ]);
     const txns = ref(saved?.txns ?? []);   // {id,type:'in'|'out'|'tr',accountId,toAccountId?,amount,category?,sub?,note,date,ts}
-    const settings = ref(saved?.settings ?? { allocTemplate: null }); // 跨裝置同步的使用者設定
+    const settings = ref(saved?.settings ?? { allocTemplate: null, installments: [] }); // 跨裝置同步的使用者設定
     const tab = ref('home');
     const filterAcc = ref('all');
 
@@ -730,7 +829,7 @@ createApp({
           { id:'a3', name:'日常花費', color:'#C99A3B' },
         ];
         txns.value = [];
-        settings.value = { allocTemplate: null };
+        settings.value = { allocTemplate: null, installments: [] };
         await callEndpoint('put_data', {
           accounts_json: JSON.stringify(accounts.value),
           txns_json: JSON.stringify(txns.value),
@@ -825,7 +924,7 @@ createApp({
       for(const t of list){ if(!map.has(t.date)) map.set(t.date, []); map.get(t.date).push(t); }
       return [...map.entries()].map(([date, items]) => ({date, items}));
     });
-    const txnIcon = t => t.type==='in' ? '💰' : (t.type==='tr' ? '⇄' : catIcon(t.category));
+    const txnIcon = t => t.instId ? '💳' : (t.type==='in' ? '💰' : (t.type==='tr' ? '⇄' : catIcon(t.category)));
     const catLabel = t => t.sub ? `${t.category}／${t.sub}` : t.category;
     const txnTitle = t => t.type==='in' ? (t.note || '收入分配')
                        : t.type==='tr' ? '帳戶互轉'
@@ -883,8 +982,81 @@ createApp({
       }
       if(saveTemplate.value && Object.keys(tmplMap).length)
         settings.value = { ...settings.value, allocTemplate: { map: tmplMap } };
+      runDueInstallments(alloc.date);   // 分配完才扣當期分期
       Object.assign(alloc, { note:'', total:null, date: today(), map:{} });
       tab.value = 'home';
+    }
+
+    /* ── 分期付款 ──
+       資料存在 settings.installments，不存「剩幾期」狀態：已繳幾期由交易史反推。
+       每期扣款 = 一筆普通 out 交易（多帶 instId / period），所以餘額、報表、匯出都自動正確。
+       只在「分配收入」後產生當期扣款；同一個月不重複扣。 */
+    const installments = computed(() => settings.value.installments ?? []);
+    function setInstallments(list){ settings.value = { ...settings.value, installments: list }; }
+    function periodAmount(total, periods, period){
+      const base = Math.floor(total / periods);
+      return period < periods ? base : total - base * (periods - 1); // 最後一期補差額，總和剛好等於原價
+    }
+    const installmentsView = computed(() => installments.value.map(p => {
+      const paid = txns.value.filter(t => t.instId === p.id);
+      const paidCount = paid.length;
+      const paidAmt = paid.reduce((s,t)=> s + t.amount, 0);
+      const done = paidCount >= p.periods;
+      const nextPeriod = done ? null : paidCount + 1;
+      return {
+        ...p, paidCount, paidAmt, done, nextPeriod,
+        perMonth: periodAmount(p.total, p.periods, 1),
+        remainAmt: p.total - paidAmt,
+        nextAmount: done ? 0 : periodAmount(p.total, p.periods, nextPeriod),
+      };
+    }));
+    // 某月分配時「該扣」的分期：已開始、未繳完、且本月還沒扣過
+    function dueInstallments(monthKey){
+      return installmentsView.value.filter(p =>
+        !p.done && p.startMonth <= monthKey &&
+        !txns.value.some(t => t.instId === p.id && t.date.slice(0,7) === monthKey));
+    }
+    const dueThisAllocMonth = computed(() => dueInstallments((alloc.date || today()).slice(0,7)));
+    const dueThisAllocSum = computed(() => dueThisAllocMonth.value.reduce((s,p)=> s + p.nextAmount, 0));
+    function runDueInstallments(dateStr){
+      const monthKey = dateStr.slice(0,7);
+      for(const p of dueInstallments(monthKey)){
+        txns.value.push({ id:uid(), type:'out', accountId:p.accountId, amount:p.nextAmount,
+          category:p.category, sub:p.sub, note:`分期 ${p.nextPeriod}/${p.periods}・${p.name}`,
+          date:dateStr, ts:Date.now(), instId:p.id, period:p.nextPeriod });
+      }
+    }
+
+    /* 新增 / 編輯分期計畫 */
+    const instOpen = ref(false);
+    const PERIOD_PRESETS = [3, 6, 12, 24];
+    const instForm = reactive({ id:'', name:'', total:null, periods:6, accountId:'', startMonth:thisMonth(), category:'帳單', sub:'信用卡費' });
+    const instSubs = computed(() => CATEGORIES.find(c => c.name === instForm.category)?.subs ?? []);
+    function instSelectCat(name){ instForm.category = name; instForm.sub = ''; }
+    function openInst(p){
+      Object.assign(instForm, p
+        ? { id:p.id, name:p.name, total:p.total, periods:p.periods, accountId:p.accountId, startMonth:p.startMonth, category:p.category, sub:p.sub }
+        : { id:'', name:'', total:null, periods:6, accountId:accounts.value[0]?.id || '', startMonth:thisMonth(), category:'帳單', sub:'信用卡費' });
+      instOpen.value = true;
+    }
+    const instValid = computed(() => !!(instForm.name && instForm.accountId && instForm.total > 0 && instForm.periods >= 2));
+    function saveInst(){
+      if(!instValid.value) return;
+      const data = { id: instForm.id || uid(), name:instForm.name, total:Number(instForm.total),
+        periods:Number(instForm.periods), accountId:instForm.accountId, startMonth:instForm.startMonth,
+        category:instForm.category, sub:instForm.sub };
+      const list = installments.value.slice();
+      const i = list.findIndex(x => x.id === data.id);
+      if(i >= 0) list[i] = data; else list.push(data);
+      setInstallments(list);
+      instOpen.value = false;
+    }
+    function delInst(p){
+      const paid = txns.value.filter(t => t.instId === p.id).length;
+      if(!confirm(`刪除分期「${p.name}」？` + (paid ? `已扣款的 ${paid} 期會一併刪除並回沖到帳戶。` : ''))) return;
+      setInstallments(installments.value.filter(x => x.id !== p.id));
+      if(paid) txns.value = txns.value.filter(t => t.instId !== p.id);
+      instOpen.value = false;
     }
 
     /* ── 每月報表：淨存與各帳戶月末餘額（由完整交易史回算，不需另外存快照） ── */
@@ -1044,6 +1216,9 @@ createApp({
       submitAuth, useGuest, logoutConfirm,
       alloc, allocSum, allocLeft, confirmAlloc,
       saveTemplate, hasTemplate, monthAllocated, applyTemplate, goAllocate,
+      installmentsView, dueThisAllocMonth, dueThisAllocSum,
+      instOpen, instForm, instSubs, instValid, PERIOD_PRESETS,
+      openInst, saveInst, delInst, instSelectCat, periodAmount,
       report, selMonth, barW, savedMonths, toggleMonth, monthLabelOf,
       trOpen, tr, openTransfer, confirmTransfer,
       accOpen, accForm, openAccEdit, saveAccount, deleteAccount,
