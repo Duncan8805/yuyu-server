@@ -1,5 +1,5 @@
 /* 餘裕 PWA Service Worker：App Shell 快取，離線可用 */
-const CACHE = 'yuyu-pwa-v6';
+const CACHE = 'yuyu-pwa-v7';
 const ASSETS = [
   './',
   './index.html',
