@@ -320,7 +320,7 @@ input,select{font-family:inherit;font-size:1rem;color:var(--ink)}
     <!-- ════════ 總覽 ════════ -->
     <section v-if="tab==='home'">
       <div class="hero">
-        <div class="hero-label">所有帳戶合計・現在還能花</div>
+        <div class="hero-label">{{ monthLabel }}所有帳戶合計・還能花</div>
         <div class="hero-amount mono">{{ fmt(totalBalance) }}</div>
         <div class="hero-sub">{{ monthLabel }}已分配 <b>{{ fmt(monthIn) }}</b>・已支出 <b>{{ fmt(monthOut) }}</b></div>
       </div>
@@ -560,7 +560,7 @@ input,select{font-family:inherit;font-size:1rem;color:var(--ink)}
           <div class="acc-meta"><span>累計分配 {{ fmt(a.totalIn) }}</span><span>累計支出 {{ fmt(a.totalOut) }}</span></div>
         </button>
       </div>
-      <p class="hint" style="margin-top:1rem">提示：帳戶餘額由「分配收入 − 支出 ± 轉帳」自動計算，刪除某筆紀錄會自動回沖餘額。</p>
+      <p class="hint" style="margin-top:1rem">提示：帳戶餘額只算「本月分配 − 本月支出 ± 本月轉帳」，代表本月這個帳戶還能花多少；上月沒花完的不會滾入。下方「累計分配／累計支出」則是這個帳戶的歷史總計。刪除某筆紀錄會自動回沖。</p>
 
       <div class="sec-title" style="margin-top:1.6rem"><span>資料備份（Excel）</span></div>
       <div class="card">
@@ -941,20 +941,21 @@ createApp({
     const catIcon = name => CATEGORIES.find(c => c.name === name)?.icon ?? '📌';
     const thisMonth = () => today().slice(0,7);
 
-    /* ── 餘額皆由交易推導，刪除紀錄自動回沖 ── */
+    /* ── 餘額只算「當月」：本月分配 − 本月支出 ± 本月轉帳，上月剩餘不滾入 ──
+       tin/tout 仍保留累計值供「帳戶管理」頁顯示歷史用。 */
     function calc(accId){
-      let bal=0, tin=0, tout=0, min=0, mout=0;
+      let tin=0, tout=0, min=0, mout=0, mtr=0;
       const m = thisMonth();
       for(const t of txns.value){
         const inMonth = t.date.slice(0,7) === m;
-        if(t.type==='in' && t.accountId===accId){ bal+=t.amount; tin+=t.amount; if(inMonth) min+=t.amount; }
-        else if(t.type==='out' && t.accountId===accId){ bal-=t.amount; tout+=t.amount; if(inMonth) mout+=t.amount; }
-        else if(t.type==='tr'){
-          if(t.accountId===accId) bal-=t.amount;
-          if(t.toAccountId===accId) bal+=t.amount;
+        if(t.type==='in' && t.accountId===accId){ tin+=t.amount; if(inMonth) min+=t.amount; }
+        else if(t.type==='out' && t.accountId===accId){ tout+=t.amount; if(inMonth) mout+=t.amount; }
+        else if(t.type==='tr' && inMonth){
+          if(t.accountId===accId) mtr-=t.amount;
+          if(t.toAccountId===accId) mtr+=t.amount;
         }
       }
-      return { bal, tin, tout, min, mout };
+      return { bal: min - mout + mtr, tin, tout, min, mout };
     }
 
     const accountsView = computed(() => accounts.value.map(a => {
@@ -1046,7 +1047,7 @@ createApp({
     const installments = computed(() => settings.value.installments ?? []);
     function setInstallments(list){ settings.value = { ...settings.value, installments: list }; }
     function periodAmount(total, periods, period){
-      const base = Math.floor(total / periods);
+      const base = Math.round(total / periods);            // 每期四捨五入到整數
       return period < periods ? base : total - base * (periods - 1); // 最後一期補差額，總和剛好等於原價
     }
     const installmentsView = computed(() => installments.value.map(p => {
@@ -1245,7 +1246,8 @@ createApp({
     function exportXlsx(){
       const wb = XLSX.utils.book_new();
       const accRows = accountsView.value.map(a => ({
-        '帳戶ID':a.id, '帳戶名稱':a.name, '代表色':a.color, '目前餘額':a.balance
+        '帳戶ID':a.id, '帳戶名稱':a.name, '代表色':a.color, '本月剩餘':a.balance,
+        '累計分配':a.totalIn, '累計支出':a.totalOut
       }));
       const txRows = [...txns.value].sort((x,y)=> x.date.localeCompare(y.date) || x.ts - y.ts).map(t => ({
         '紀錄ID':t.id, '日期':t.date, '類型':TYPE_TXT[t.type],
